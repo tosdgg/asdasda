@@ -2,15 +2,32 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>Roguelike TD - Google Sheets Powered</title>
+    <title>Roguelike TD - Level Up Update</title>
     <style>
         body { margin: 0; background: #222; color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
         #game-container { position: relative; display: flex; justify-content: center; margin-top: 20px; }
-        canvas { background: #333; border: 2px solid #555; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        canvas { background: #333; border: 2px solid #555; box-shadow: 0 0 20px rgba(0,0,0,0.5); cursor: crosshair; }
         
         #ui-layer { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 800px; height: 600px; pointer-events: none; }
-        .hud { position: absolute; top: 10px; left: 10px; font-size: 18px; font-weight: bold; pointer-events: auto; }
+        .hud { position: absolute; top: 10px; left: 10px; font-size: 18px; font-weight: bold; pointer-events: auto; text-shadow: 1px 1px 2px black; }
         
+        /* 升級菜單 (新功能) */
+        #upgrade-menu {
+            display: none; position: absolute; background: rgba(20, 20, 30, 0.95); 
+            border: 2px solid #00bcd4; padding: 15px; border-radius: 8px; pointer-events: auto;
+            flex-direction: column; gap: 10px; min-width: 150px;
+            box-shadow: 0 0 15px rgba(0, 188, 212, 0.3);
+        }
+        #upgrade-menu h4 { margin: 0 0 5px 0; color: #00bcd4; font-size: 16px; }
+        #upgrade-menu p { margin: 0; font-size: 12px; color: #aaa; }
+        .btn-upgrade { 
+            background: #e67e22; border: none; color: white; padding: 8px; cursor: pointer; border-radius: 4px; font-weight: bold;
+        }
+        .btn-upgrade:hover { background: #d35400; }
+        .btn-upgrade:disabled { background: #555; cursor: not-allowed; opacity: 0.6; }
+        .btn-close { background: #c0392b; margin-top: 5px; }
+
+        /* 肉鴿卡牌選擇界面 */
         #draft-screen { 
             display: flex; position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(0,0,0,0.85); flex-direction: column; align-items: center; justify-content: center; pointer-events: auto; z-index: 10;
@@ -23,8 +40,6 @@
             cursor: pointer; transition: 0.2s; padding: 20px; text-align: center;
         }
         .card:hover { transform: translateY(-10px); background: #555; border-color: #00bcd4; box-shadow: 0 0 15px #00bcd4; }
-        .card h3 { color: #00bcd4; margin-bottom: 10px; }
-        .card p { font-size: 14px; color: #ccc; }
         
         #loading-msg { color: #00bcd4; font-size: 24px; animation: blink 1s infinite; }
         @keyframes blink { 50% { opacity: 0.5; } }
@@ -42,8 +57,17 @@
     <div id="ui-layer">
         <div class="hud">
             <div>❤️ 生命: <span id="lives">10</span></div>
-            <div>💰 金幣: <span id="money">100</span></div>
+            <div>💰 金幣: <span id="money">150</span></div>
             <div>🌊 波數: <span id="wave">1</span></div>
+        </div>
+
+        <div id="upgrade-menu">
+            <h4 id="menu-title">防禦塔 Lv.1</h4>
+            <p>傷害: <span id="menu-dmg">0</span> | 範圍: <span id="menu-rng">0</span></p>
+            <button class="btn-upgrade" id="btn-upgrade-action" onclick="upgradeSelectedTower()">
+                升級 (-$100)
+            </button>
+            <button class="btn-upgrade btn-close" onclick="closeMenu()">關閉</button>
         </div>
 
         <div id="draft-screen">
@@ -53,110 +77,165 @@
         </div>
 
         <div id="controls">
-            <p>點擊地圖花費 50💰 建造防禦塔</p>
+            <p>點擊空地花費 50💰 建造 | 點擊防禦塔升級</p>
             <button class="start-btn" id="start-wave-btn" onclick="startWave()">開始下一波</button>
         </div>
     </div>
 </div>
 
 <script>
-// --- 1. 配置與數據載入 ---
+// --- 1. 配置與數據載入 (Google Sheet) ---
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?output=csv';
 
 let loadedUpgrades = [];
 
-// CSV 解析器
 function parseCSV(text) {
     const lines = text.trim().split('\n');
-    const headers = lines[0].split(',').map(h => h.trim()); // 假設第一行是標題
+    const headers = lines[0].split(',').map(h => h.trim());
     const data = [];
-
     for (let i = 1; i < lines.length; i++) {
         const currentline = lines[i].split(',');
-        if(currentline.length < headers.length) continue; // 跳過壞行
-        
+        if(currentline.length < headers.length) continue;
         let obj = {};
-        for (let j = 0; j < headers.length; j++) {
-            obj[headers[j]] = currentline[j] ? currentline[j].trim() : "";
-        }
+        for (let j = 0; j < headers.length; j++) obj[headers[j]] = currentline[j] ? currentline[j].trim() : "";
         data.push(obj);
     }
     return data;
 }
 
-// 數據映射：將 CSV 的文字轉換為遊戲邏輯
-// 請根據你的 Google Sheet 欄位名稱修改這裡的 key (例如 'type', 'value')
 function mapDataToGameLogic(data) {
     return data.map(item => {
-        // 預設值，防止 CSV 缺漏
         const type = item['type'] || item['Type'] || 'DMG'; 
         const val = parseFloat(item['value'] || item['Value'] || 0);
         const name = item['name'] || item['Name'] || '未知強化';
         const desc = item['description'] || item['desc'] || item['Description'] || '無描述';
 
         return {
-            name: name,
-            desc: desc,
+            name: name, desc: desc,
             apply: () => {
-                // 根據 type 決定效果
                 switch(type.toUpperCase()) {
-                    case 'DMG': playerStats.towerDamage += val; break;
-                    case 'RNG': playerStats.towerRange += val; break;
-                    case 'SPD': playerStats.towerFireRate = Math.max(5, playerStats.towerFireRate - val); break; // 減法加速
+                    case 'DMG': playerStats.globalDamage += val; break; // 改為增加全局變量
+                    case 'RNG': playerStats.globalRange += val; break;
+                    case 'SPD': playerStats.globalFireRate = Math.max(5, playerStats.globalFireRate - val); break;
                     case 'GOLD': playerStats.goldMultiplier += val; break;
                     case 'HP': updateLives(val); break;
-                    default: console.warn('未知效果類型:', type);
                 }
             }
         };
     });
 }
 
-// 啟動時載入數據
 async function initGameData() {
     try {
         const response = await fetch(CSV_URL);
         const text = await response.text();
-        const rawData = parseCSV(text);
-        
-        loadedUpgrades = mapDataToGameLogic(rawData);
-        
-        console.log("成功載入卡牌:", loadedUpgrades);
-        
-        // 載入完成，隱藏 Loading，顯示開始按鈕 (或第一次 Draft)
+        loadedUpgrades = mapDataToGameLogic(parseCSV(text));
         document.getElementById('loading-msg').style.display = 'none';
         document.getElementById('draft-title').innerText = "準備就緒";
         document.getElementById('draft-screen').style.display = 'none';
         document.getElementById('start-wave-btn').style.display = 'inline-block';
-        
     } catch (e) {
-        console.error("載入失敗:", e);
-        document.getElementById('loading-msg').innerText = "數據載入失敗，請檢查控制台 (F12)";
-        document.getElementById('loading-msg').style.color = "red";
-        
-        // 備用數據，避免遊戲卡死
-        loadedUpgrades = [
-            { name: "備用火藥", desc: "傷害+5 (離線模式)", apply: () => playerStats.towerDamage += 5 },
-            { name: "備用鏡頭", desc: "範圍+20 (離線模式)", apply: () => playerStats.towerRange += 20 }
-        ];
+        console.error("載入失敗", e);
+        loadedUpgrades = [{ name: "備用火藥", desc: "傷害+5", apply: () => playerStats.globalDamage += 5 }];
+        document.getElementById('loading-msg').style.display = 'none';
+        document.getElementById('draft-screen').style.display = 'none';
         document.getElementById('start-wave-btn').style.display = 'inline-block';
     }
 }
 
-// --- 2. 遊戲核心邏輯 (部分微調) ---
+// --- 2. 遊戲核心變數調整 ---
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
 let gameState = {
-    lives: 10, money: 100, wave: 1,
-    enemies: [], towers: [], projectiles: [], isWaveActive: false
+    lives: 10,
+    money: 150, // 增加初始金幣，避免第一波卡死
+    wave: 1,
+    enemies: [],
+    towers: [],
+    projectiles: [],
+    isWaveActive: false
 };
 
+// 全局屬性 (來自卡牌) + 塔的基礎屬性分離
 let playerStats = {
-    towerDamage: 10, towerRange: 100, towerFireRate: 60, goldMultiplier: 1.0
+    globalDamage: 0,      // 卡牌給的額外傷害
+    globalRange: 0,       // 卡牌給的額外範圍
+    globalFireRate: 60,   // 基礎射速
+    goldMultiplier: 1.0,
+    baseDamage: 15        // 提高基礎傷害 (原本10)
 };
 
 const path = [{x: 0, y: 100}, {x: 200, y: 100}, {x: 200, y: 400}, {x: 600, y: 400}, {x: 600, y: 200}, {x: 800, y: 200}];
+
+// --- 3. 類定義 (新增等級與升級邏輯) ---
+
+class Tower {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.cooldown = 0;
+        this.level = 1;
+        this.baseRange = 100;
+        this.levelDamageBonus = 0;
+        this.levelRangeBonus = 0;
+    }
+
+    getDamage() {
+        // 傷害 = 基礎(15) + 卡牌加成 + 等級加成
+        return playerStats.baseDamage + playerStats.globalDamage + this.levelDamageBonus;
+    }
+
+    getRange() {
+        return this.baseRange + playerStats.globalRange + this.levelRangeBonus;
+    }
+
+    upgrade() {
+        this.level++;
+        this.levelDamageBonus += 10; // 每次升級加 10 點傷害
+        this.levelRangeBonus += 20;  // 每次升級加 20 點範圍
+    }
+
+    update() {
+        if (this.cooldown > 0) this.cooldown--;
+        if (this.cooldown <= 0) {
+            let target = null, minDist = Infinity;
+            let currentRange = this.getRange();
+            gameState.enemies.forEach(e => {
+                if (!e.active) return;
+                let dist = Math.hypot(e.x - this.x, e.y - this.y);
+                if (dist <= currentRange && dist < minDist) { minDist = dist; target = e; }
+            });
+            if (target) {
+                gameState.projectiles.push(new Projectile(this.x, this.y, target, this.getDamage()));
+                this.cooldown = playerStats.globalFireRate;
+            }
+        }
+    }
+
+    draw() {
+        // 根據等級改變顏色
+        if (this.level === 1) ctx.fillStyle = '#4a90e2'; // 藍
+        else if (this.level === 2) ctx.fillStyle = '#9b59b6'; // 紫
+        else ctx.fillStyle = '#f1c40f'; // 金
+
+        ctx.fillRect(this.x-15, this.y-15, 30, 30);
+        
+        // 畫等級標記
+        ctx.fillStyle = '#fff';
+        ctx.font = '12px Arial';
+        ctx.fillText("Lv." + this.level, this.x - 10, this.y - 20);
+
+        // 如果是被選中的塔，畫個圈
+        if (selectedTower === this) {
+            ctx.strokeStyle = '#00bcd4';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.getRange(), 0, Math.PI*2);
+            ctx.stroke();
+        }
+    }
+}
 
 class Enemy {
     constructor(waveDifficulty) {
@@ -182,29 +261,11 @@ class Enemy {
     }
 }
 
-class Tower {
-    constructor(x, y) { this.x = x; this.y = y; this.cooldown = 0; }
-    update() {
-        this.range = playerStats.towerRange;
-        if (this.cooldown > 0) this.cooldown--;
-        if (this.cooldown <= 0) {
-            let target = null, minDist = Infinity;
-            gameState.enemies.forEach(e => {
-                if (!e.active) return;
-                let dist = Math.hypot(e.x - this.x, e.y - this.y);
-                if (dist <= this.range && dist < minDist) { minDist = dist; target = e; }
-            });
-            if (target) {
-                gameState.projectiles.push(new Projectile(this.x, this.y, target));
-                this.cooldown = playerStats.towerFireRate;
-            }
-        }
-    }
-    draw() { ctx.fillStyle = '#4a90e2'; ctx.fillRect(this.x-15, this.y-15, 30, 30); }
-}
-
 class Projectile {
-    constructor(x, y, target) { this.x = x; this.y = y; this.target = target; this.speed = 8; this.damage = playerStats.towerDamage; this.active = true; }
+    constructor(x, y, target, damage) { 
+        this.x = x; this.y = y; this.target = target; 
+        this.speed = 8; this.damage = damage; this.active = true; 
+    }
     update() {
         if (!this.active) return;
         if (!this.target.active) { this.active = false; return; }
@@ -217,12 +278,87 @@ class Projectile {
     draw() { if (!this.active) return; ctx.fillStyle = '#ffeb3b'; ctx.beginPath(); ctx.arc(this.x, this.y, 4, 0, Math.PI*2); ctx.fill(); }
 }
 
-// --- 流程控制 ---
+// --- 4. 互動邏輯 (建造與升級) ---
+
+let selectedTower = null;
+const upgradeMenu = document.getElementById('upgrade-menu');
+
+canvas.addEventListener('mousedown', (e) => {
+    // 獲取滑鼠座標
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    // 1. 檢查是否點擊了現有的塔 (升級模式)
+    const clickedTower = gameState.towers.find(t => Math.hypot(t.x - x, t.y - y) < 20);
+
+    if (clickedTower) {
+        openUpgradeMenu(clickedTower, e.clientX, e.clientY);
+    } else {
+        // 2. 如果點空地，建造新塔
+        closeMenu(); // 關閉舊菜單
+        if (gameState.money >= 50) {
+            // 簡單的重疊檢查
+            const overlap = gameState.towers.some(t => Math.hypot(t.x - x, t.y - y) < 30);
+            if (!overlap) {
+                gameState.towers.push(new Tower(x, y));
+                updateMoney(-50);
+            }
+        }
+    }
+});
+
+function openUpgradeMenu(tower, screenX, screenY) {
+    selectedTower = tower;
+    
+    // 計算升級費用 (等級 * 100)
+    const cost = tower.level * 100;
+    
+    document.getElementById('menu-title').innerText = `防禦塔 Lv.${tower.level}`;
+    document.getElementById('menu-dmg').innerText = Math.floor(tower.getDamage());
+    document.getElementById('menu-rng').innerText = Math.floor(tower.getRange());
+    
+    const btn = document.getElementById('btn-upgrade-action');
+    btn.innerText = `升級 (-$${cost})`;
+    btn.onclick = upgradeSelectedTower; // 重新綁定事件
+    
+    // 如果錢不夠，按鈕變灰
+    btn.disabled = gameState.money < cost;
+
+    // 顯示菜單
+    upgradeMenu.style.left = (screenX + 20) + 'px';
+    upgradeMenu.style.top = (screenY - 50) + 'px';
+    upgradeMenu.style.display = 'flex';
+}
+
+function upgradeSelectedTower() {
+    if (!selectedTower) return;
+    const cost = selectedTower.level * 100;
+    
+    if (gameState.money >= cost) {
+        updateMoney(-cost);
+        selectedTower.upgrade();
+        closeMenu(); // 升級完關閉菜單
+    }
+}
+
+function closeMenu() {
+    selectedTower = null;
+    upgradeMenu.style.display = 'none';
+}
+
+// --- 5. 流程控制 ---
+
 function startWave() {
     if (gameState.isWaveActive) return;
     gameState.isWaveActive = true;
     document.getElementById('start-wave-btn').style.display = 'none';
-    let enemiesToSpawn = 5 + gameState.wave * 2, spawnedCount = 0;
+    closeMenu(); // 開始波次時關閉菜單
+    
+    let enemiesToSpawn = 5 + gameState.wave * 2;
+    let spawnInterval = 60;
+    let spawnedCount = 0;
+
     const spawner = setInterval(() => {
         if (!gameState.isWaveActive) { clearInterval(spawner); return; }
         gameState.enemies.push(new Enemy(gameState.wave));
@@ -246,22 +382,14 @@ function endWave() {
     showDraftScreen();
 }
 
-// --- 卡牌選擇 ---
 function showDraftScreen() {
     const screen = document.getElementById('draft-screen');
     const container = document.getElementById('cards-container');
-    const title = document.getElementById('draft-title');
-    
-    title.innerText = "選擇你的強化 (Reward)";
     container.innerHTML = ''; 
-
-    // 從 loadedUpgrades 中隨機選
-    // 如果數據還沒載入完，使用空陣列
     const pool = loadedUpgrades.length > 0 ? loadedUpgrades : [];
 
-    if (pool.length === 0) {
-        container.innerHTML = "<p>沒有可用的卡牌數據</p>";
-    } else {
+    if (pool.length === 0) container.innerHTML = "<p>無數據</p>";
+    else {
         for (let i = 0; i < 3; i++) {
             const upgrade = pool[Math.floor(Math.random() * pool.length)];
             const card = document.createElement('div');
@@ -280,17 +408,17 @@ function selectUpgrade(upgrade) {
     document.getElementById('start-wave-btn').style.display = 'inline-block';
 }
 
-// --- 輸入與工具 ---
-canvas.addEventListener('mousedown', (e) => {
-    if (gameState.isWaveActive) return; 
-    const rect = canvas.getBoundingClientRect();
-    if (gameState.money >= 50) {
-        gameState.towers.push(new Tower(e.clientX - rect.left, e.clientY - rect.top));
-        updateMoney(-50);
+function updateMoney(amount) { 
+    gameState.money += amount; 
+    document.getElementById('money').innerText = gameState.money; 
+    
+    // 如果菜單開著，即時更新按鈕狀態
+    if(selectedTower) {
+        const cost = selectedTower.level * 100;
+        document.getElementById('btn-upgrade-action').disabled = gameState.money < cost;
     }
-});
+}
 
-function updateMoney(amount) { gameState.money += amount; document.getElementById('money').innerText = gameState.money; }
 function updateLives(amount) { 
     gameState.lives += amount; document.getElementById('lives').innerText = gameState.lives;
     if (gameState.lives <= 0) { alert("Game Over!"); location.reload(); }
@@ -312,13 +440,8 @@ function loop() {
     requestAnimationFrame(loop);
 }
 
-// 啟動資料載入
 initGameData();
 loop();
-
-</script>
-</body>
-</html>
 
 </script>
 </body>

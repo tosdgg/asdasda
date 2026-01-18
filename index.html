@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>Roguelike TD V6.0 - Horde Mode</title>
+    <title>Roguelike TD V7.0 - Bug Fix</title>
     <style>
         body { margin: 0; background: #222; color: #fff; font-family: 'Microsoft JhengHei', sans-serif; overflow: hidden; }
         #game-container { position: relative; display: flex; justify-content: center; margin-top: 20px; }
@@ -70,16 +70,18 @@
 </div>
 
 <script>
-// --- 1. 配置 ---
+// --- 1. 自動填入的 URL ---
+// 這是 Sheet 1 (強化卡牌)
 const UPGRADE_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?output=csv';
-// ⚠️ 確保這裡是你 Sheet 2 (敵人) 的 URL
+
+// 這是 Sheet 2 (敵人數據)，我已經幫你加上了 gid=754158994
 const ENEMY_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?gid=754158994&output=csv';
 
 let loadedUpgrades = [];
 let loadedEnemyTypes = [];
 let specialStats = { slowFactor: 0, splashRadius: 0 };
 
-// --- 2. 數據解析與容錯邏輯 ---
+// --- 2. 數據處理 ---
 
 function parseCSV(text) {
     const lines = text.trim().split('\n');
@@ -96,7 +98,6 @@ function parseCSV(text) {
 }
 
 function mapEnemies(data) {
-    // 安全過濾：確保有 name，且數值為有效數字 (如果是 NaN 則給預設值)
     return data.filter(item => item['name']).map(item => ({
         name: item['name'],
         baseHp: parseFloat(item['hp'] || item['Hp'] || 50) || 50,
@@ -127,16 +128,11 @@ function mapUpgrades(data) {
     });
 }
 
-// 修復：更安全的隨機選取
 function getRandomEnemyType() {
     if (!loadedEnemyTypes || loadedEnemyTypes.length === 0) {
-        // ❌ 如果真的沒數據，回傳一個保底怪，避免遊戲崩潰
         return { name: "BUG史萊姆", baseHp: 50, speed: 1.0, gold: 10, weight: 1 };
     }
-    
     const totalWeight = loadedEnemyTypes.reduce((sum, type) => sum + type.weight, 0);
-    
-    // 如果總權重是 0 (例如使用者忘記填權重)，隨機選一個
     if (totalWeight <= 0) return loadedEnemyTypes[Math.floor(Math.random() * loadedEnemyTypes.length)];
 
     let random = Math.random() * totalWeight;
@@ -152,15 +148,11 @@ async function initGameData() {
         const [uRes, eRes] = await Promise.all([fetch(UPGRADE_CSV_URL), fetch(ENEMY_CSV_URL)]);
         loadedUpgrades = mapUpgrades(parseCSV(await uRes.text()));
         loadedEnemyTypes = mapEnemies(parseCSV(await eRes.text()));
-        
-        console.log("✅ 敵人載入成功:", loadedEnemyTypes.length, "種");
-        
-        if(loadedEnemyTypes.length === 0) throw new Error("CSV是空的");
-        
+        console.log("✅ 載入成功");
+        if(loadedEnemyTypes.length === 0) throw new Error("CSV空");
         startGameUI();
     } catch (e) {
         console.error("❌ 載入失敗:", e);
-        // 保底數據
         loadedEnemyTypes = [{ name: "預設怪", baseHp: 50, speed: 1.5, gold: 10, weight: 100 }];
         loadedUpgrades = [{ name: "測試卡", desc: "傷害+5", apply:()=>playerStats.globalDamage+=5 }];
         startGameUI();
@@ -176,42 +168,36 @@ function startGameUI() {
 // --- 3. 遊戲核心 ---
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-let gameState = { lives: 20, money: 200, wave: 1, enemies: [], towers: [], projectiles: [], isWaveActive: false };
+let gameState = { 
+    lives: 20, money: 200, wave: 1, 
+    enemies: [], towers: [], projectiles: [], 
+    isWaveActive: false, 
+    isEndingWave: false // 🔴 [Bug修復] 新增這個鎖，防止重複觸發
+};
 let playerStats = { globalDamage: 0, globalRange: 0, globalFireRate: 60, goldMultiplier: 1.0, baseDamage: 15 };
 const path = [{x: 0, y: 100}, {x: 200, y: 100}, {x: 200, y: 400}, {x: 600, y: 400}, {x: 600, y: 200}, {x: 800, y: 200}];
 
 class Enemy {
     constructor(wave) {
-        const type = getRandomEnemyType(); // 使用修復後的選取邏輯
-        
-        this.name = type.name;
-        this.goldReward = type.gold;
-        this.pathIndex = 0;
-        this.x = path[0].x; this.y = path[0].y;
-        this.baseSpeed = type.speed;
-        this.currentSpeed = this.baseSpeed;
-        
-        // 血量成長：基礎 1.2 倍指數成長
+        const type = getRandomEnemyType();
+        this.name = type.name; this.goldReward = type.gold;
+        this.pathIndex = 0; this.x = path[0].x; this.y = path[0].y;
+        this.baseSpeed = type.speed; this.currentSpeed = this.baseSpeed;
         const scaleMultiplier = Math.pow(1.2, wave - 1);
         this.hp = Math.floor(type.baseHp * scaleMultiplier);
         this.maxHp = this.hp;
-        this.slowTimer = 0;
-        this.active = true;
+        this.slowTimer = 0; this.active = true;
     }
-    
     update() {
         if (!this.active) return;
         if (this.slowTimer > 0) { this.slowTimer--; this.currentSpeed = this.baseSpeed * (1 - specialStats.slowFactor); }
         else { this.currentSpeed = this.baseSpeed; }
-
         let target = path[this.pathIndex + 1];
         if (!target) { this.active = false; updateLives(-1); return; }
-        
         let dx = target.x - this.x, dy = target.y - this.y, dist = Math.hypot(dx, dy);
         if (dist < this.currentSpeed) { this.x = target.x; this.y = target.y; this.pathIndex++; } 
         else { this.x += (dx/dist)*this.currentSpeed; this.y += (dy/dist)*this.currentSpeed; }
     }
-    
     takeDamage(dmg) {
         this.hp -= dmg;
         if (this.hp <= 0 && this.active) {
@@ -219,17 +205,14 @@ class Enemy {
             updateMoney(Math.floor(this.goldReward * playerStats.goldMultiplier));
         }
     }
-    
     draw() {
         if (!this.active) return;
         ctx.fillStyle = this.slowTimer > 0 ? '#00bfff' : 'white';
         ctx.font = "bold 16px Arial"; ctx.textAlign = "center";
         ctx.strokeStyle = "black"; ctx.lineWidth = 3;
-        ctx.strokeText(this.name, this.x, this.y);
-        ctx.fillText(this.name, this.x, this.y);
-        const barY = this.y - 15;
-        ctx.fillStyle = "red"; ctx.fillRect(this.x-20, barY, 40, 4);
-        ctx.fillStyle = "#00ff00"; ctx.fillRect(this.x-20, barY, 40 * (this.hp/this.maxHp), 4);
+        ctx.strokeText(this.name, this.x, this.y); ctx.fillText(this.name, this.x, this.y);
+        ctx.fillStyle = "red"; ctx.fillRect(this.x-20, this.y-15, 40, 4);
+        ctx.fillStyle = "#00ff00"; ctx.fillRect(this.x-20, this.y-15, 40 * (this.hp/this.maxHp), 4);
     }
 }
 
@@ -238,7 +221,6 @@ class Tower {
     getDamage() { return playerStats.baseDamage + playerStats.globalDamage + this.levelDamage; }
     getRange() { return this.baseRange + playerStats.globalRange + this.levelRange; }
     upgrade() { this.level++; this.levelDamage += 15; this.levelRange += 15; }
-    
     update() {
         if (this.cooldown > 0) this.cooldown--;
         if (this.cooldown <= 0) {
@@ -270,12 +252,10 @@ class Projectile {
         if (!this.active) return;
         if (!this.target.active) { this.active = false; return; }
         let dx = this.target.x - this.x, dy = this.target.y - this.y, dist = Math.hypot(dx, dy);
-        if (dist < this.speed) { this.hit(this.target); } 
-        else { this.x += (dx/dist)*this.speed; this.y += (dy/dist)*this.speed; }
+        if (dist < this.speed) { this.hit(this.target); } else { this.x += (dx/dist)*this.speed; this.y += (dy/dist)*this.speed; }
     }
     hit(target) {
-        this.active = false;
-        target.takeDamage(this.damage);
+        this.active = false; target.takeDamage(this.damage);
         if (specialStats.slowFactor > 0 && target.active) target.slowTimer = 60;
         if (specialStats.splashRadius > 0) {
             gameState.enemies.forEach(e => {
@@ -287,9 +267,8 @@ class Projectile {
     draw() { if (!this.active) return; ctx.fillStyle = specialStats.slowFactor > 0 ? '#00bfff' : '#ffeb3b'; ctx.beginPath(); ctx.arc(this.x, this.y, 4, 0, Math.PI*2); ctx.fill(); }
 }
 
-// --- UI 與流程控制 ---
+// --- UI & Control ---
 let selectedTower = null; const upgradeMenu = document.getElementById('upgrade-menu');
-
 canvas.addEventListener('mousedown', (e) => {
     const rect = canvas.getBoundingClientRect(), x = e.clientX - rect.left, y = e.clientY - rect.top;
     const clicked = gameState.towers.find(t => Math.hypot(t.x-x, t.y-y) < 25);
@@ -313,36 +292,19 @@ function updateLives(v) { gameState.lives += v; document.getElementById('lives')
 
 function startWave() {
     if (gameState.isWaveActive) return;
-    gameState.isWaveActive = true; document.getElementById('start-wave-btn').style.display = 'none'; closeMenu();
+    gameState.isWaveActive = true; 
+    gameState.isEndingWave = false; // 🟢 [Bug修復] 重置鎖
+    document.getElementById('start-wave-btn').style.display = 'none'; closeMenu();
     
-    // --- 敵人生成邏輯 (Horde Update) ---
-    
-    // 1. 數量公式：每波增加 3 隻
-    // Wave 1: 5 + 3 = 8
-    // Wave 10: 5 + 30 = 35
     let max = 5 + (gameState.wave * 3); 
-    
-    // 2. 出怪間隔 (Interval)：每波減少 20ms，最快 200ms (一秒5隻)
-    // Wave 1: 800ms
-    // Wave 10: 600ms
-    // Wave 30: 200ms (極速)
     let interval = Math.max(200, 800 - (gameState.wave * 20));
-
-    // 更新 UI 顯示預計敵人數量
     document.getElementById('enemy-count').innerText = max;
 
     let count = 0;
     const spawner = setInterval(() => {
         if(!gameState.isWaveActive) { clearInterval(spawner); return; }
-        
-        try {
-            gameState.enemies.push(new Enemy(gameState.wave));
-        } catch(e) {
-            console.error("生成敵人失敗", e);
-        }
-        
-        count++; 
-        if(count >= max) clearInterval(spawner);
+        try { gameState.enemies.push(new Enemy(gameState.wave)); } catch(e) {}
+        count++; if(count >= max) clearInterval(spawner);
     }, interval);
 }
 
@@ -351,6 +313,7 @@ function endWave() {
     gameState.wave++; document.getElementById('wave').innerText = gameState.wave;
     showDraft();
 }
+
 function showDraft() {
     const box = document.getElementById('cards-container'); box.innerHTML = '';
     const pool = loadedUpgrades.length ? loadedUpgrades : [];
@@ -363,6 +326,7 @@ function showDraft() {
     }
     document.getElementById('draft-screen').style.display = 'flex';
 }
+
 function loop() {
     ctx.fillStyle = '#333'; ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.strokeStyle = '#555'; ctx.lineWidth = 40; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -370,7 +334,14 @@ function loop() {
     gameState.towers.forEach(t => { t.update(); t.draw(); });
     gameState.enemies.forEach(e => { e.update(); e.draw(); });
     gameState.projectiles.forEach(p => { p.update(); p.draw(); });
-    if(gameState.isWaveActive && gameState.enemies.length && !gameState.enemies.some(e=>e.active)) setTimeout(endWave, 500);
+
+    // 🔴 [Bug修復] 這裡加入了 !gameState.isEndingWave 的判斷
+    if(gameState.isWaveActive && gameState.enemies.length > 0 && !gameState.enemies.some(e=>e.active)) {
+        if (!gameState.isEndingWave) {
+            gameState.isEndingWave = true; // 上鎖，確保只執行一次
+            setTimeout(endWave, 500);
+        }
+    }
     requestAnimationFrame(loop);
 }
 initGameData(); loop();

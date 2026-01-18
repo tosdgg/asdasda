@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>Roguelike TD - Full Data Connected</title>
+    <title>Roguelike TD V5.0 - Gold & Weights</title>
     <style>
         body { margin: 0; background: #222; color: #fff; font-family: 'Microsoft JhengHei', sans-serif; overflow: hidden; }
         #game-container { position: relative; display: flex; justify-content: center; margin-top: 20px; }
@@ -11,7 +11,6 @@
         #ui-layer { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 800px; height: 600px; pointer-events: none; }
         .hud { position: absolute; top: 10px; left: 10px; font-size: 18px; font-weight: bold; pointer-events: auto; text-shadow: 1px 1px 2px black; }
         
-        /* 升級菜單 */
         #upgrade-menu {
             display: none; position: absolute; background: rgba(20, 20, 30, 0.95); 
             border: 2px solid #00bcd4; padding: 15px; border-radius: 8px; pointer-events: auto;
@@ -21,7 +20,6 @@
         .btn-upgrade:disabled { background: #555; }
         .btn-close { background: #c0392b; }
 
-        /* 卡牌選擇 */
         #draft-screen { 
             display: flex; position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(0,0,0,0.9); flex-direction: column; align-items: center; justify-content: center; pointer-events: auto; z-index: 10;
@@ -48,7 +46,7 @@
             <div>❤️ 生命: <span id="lives">20</span></div>
             <div>💰 金幣: <span id="money">200</span></div>
             <div>🌊 波數: <span id="wave">1</span></div>
-            <div style="font-size: 14px; color: #aaa; margin-top: 5px;">敵人強度倍率: <span id="hp-scale">1.0x</span></div>
+            <div style="font-size: 14px; color: #aaa; margin-top: 5px;">敵人血量倍率: <span id="hp-scale">1.0x</span></div>
         </div>
 
         <div id="upgrade-menu">
@@ -59,33 +57,31 @@
         </div>
 
         <div id="draft-screen">
-            <h2 id="draft-title">正在連線至 Google Sheets...</h2>
-            <div id="loading-msg">讀取設定與敵人數據...</div>
+            <h2 id="draft-title">讀取 Google Sheets...</h2>
+            <div id="loading-msg">請稍候...</div>
             <div class="cards-container" id="cards-container"></div>
         </div>
 
         <div id="controls">
-            <p>點擊空地建造 ($50) | 點擊文字敵人攻擊</p>
-            <button class="start-btn" id="start-wave-btn" onclick="startWave()">下一波 (Next Wave)</button>
+            <p>點擊空地建造 ($50) | 點擊防禦塔升級</p>
+            <button class="start-btn" id="start-wave-btn" onclick="startWave()">下一波</button>
         </div>
     </div>
 </div>
 
 <script>
-// --- 1. 資料連結設定 ---
+// --- 1. 配置 (請修改這裡的 URL) ---
+const UPGRADE_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?output=csv';
 
-const BASE_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub';
-
-// 強化卡牌 (預設頁面)
-const UPGRADE_URL = `${BASE_URL}?output=csv`;
-
-// 敵人數據 (使用你提供的 GID: 164420776)
-const ENEMY_URL = `${BASE_URL}?gid=164420776&single=true&output=csv`;
+// ⚠️ 請確保這裡使用的是 Sheet 2 (敵人) 的 gid
+const ENEMY_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?gid=754158994&output=csv';
 
 let loadedUpgrades = [];
 let loadedEnemyTypes = [];
+let specialStats = { slowFactor: 0, splashRadius: 0 };
 
-// CSV 解析
+// --- 2. 數據解析與權重邏輯 ---
+
 function parseCSV(text) {
     const lines = text.trim().split('\n');
     const headers = lines[0].split(',').map(h => h.trim());
@@ -100,49 +96,64 @@ function parseCSV(text) {
     return data;
 }
 
-// 數據載入
+function mapEnemies(data) {
+    return data.filter(item => item['name'] && item['hp']).map(item => ({
+        name: item['name'],
+        baseHp: parseFloat(item['hp'] || 50),
+        speed: parseFloat(item['speed'] || 1.5),
+        // 新增：解析 D 行和 E 行
+        gold: parseFloat(item['gold'] || item['drop'] || 15), // 預設掉落 15
+        weight: parseFloat(item['weight'] || item['chance'] || 10) // 預設權重 10
+    }));
+}
+
+function mapUpgrades(data) {
+    return data.map(item => {
+        const type = (item['type'] || item['Type'] || 'DMG').toUpperCase();
+        const val = parseFloat(item['value'] || item['Value'] || 0);
+        return {
+            name: item['name'] || '未知', desc: item['description'] || '',
+            apply: () => {
+                switch(type) {
+                    case 'DMG': playerStats.globalDamage += val; break;
+                    case 'RNG': playerStats.globalRange += val; break;
+                    case 'SPD': playerStats.globalFireRate = Math.max(5, playerStats.globalFireRate - val); break;
+                    case 'GOLD': playerStats.goldMultiplier += val; break;
+                    case 'HP': updateLives(val); break;
+                    case 'ICE': specialStats.slowFactor = Math.min(0.8, specialStats.slowFactor + val); break;
+                    case 'AOE': specialStats.splashRadius += val; break;
+                }
+            }
+        };
+    });
+}
+
+// 權重隨機算法 (Weighted Random)
+function getRandomEnemyType() {
+    if (loadedEnemyTypes.length === 0) return null;
+    
+    // 計算總權重
+    const totalWeight = loadedEnemyTypes.reduce((sum, type) => sum + type.weight, 0);
+    let random = Math.random() * totalWeight;
+    
+    for (const type of loadedEnemyTypes) {
+        if (random < type.weight) return type;
+        random -= type.weight;
+    }
+    return loadedEnemyTypes[0]; // 防止誤差
+}
+
 async function initGameData() {
     try {
-        console.log("開始載入數據...");
-        const [upgradeRes, enemyRes] = await Promise.all([
-            fetch(UPGRADE_URL),
-            fetch(ENEMY_URL)
-        ]);
-
-        const upgradeText = await upgradeRes.text();
-        const enemyText = await enemyRes.text();
-
-        // 處理卡牌
-        loadedUpgrades = mapUpgrades(parseCSV(upgradeText));
-        
-        // 處理敵人 (過濾掉沒有名字的空行)
-        const rawEnemyData = parseCSV(enemyText);
-        loadedEnemyTypes = rawEnemyData
-            .filter(e => e['name'] && e['name'].trim() !== '')
-            .map(e => ({
-                name: e['name'],
-                baseHp: parseFloat(e['hp'] || e['Hp'] || 50),
-                speed: parseFloat(e['speed'] || e['Speed'] || 1.5)
-            }));
-
-        console.log("卡牌:", loadedUpgrades);
-        console.log("敵人:", loadedEnemyTypes);
-
-        if (loadedEnemyTypes.length === 0) throw new Error("敵人列表為空");
-
+        const [uRes, eRes] = await Promise.all([fetch(UPGRADE_CSV_URL), fetch(ENEMY_CSV_URL)]);
+        loadedUpgrades = mapUpgrades(parseCSV(await uRes.text()));
+        loadedEnemyTypes = mapEnemies(parseCSV(await eRes.text()));
+        console.log("敵人列表:", loadedEnemyTypes);
         startGameUI();
-
     } catch (e) {
-        console.warn("載入失敗，切換至離線備用數據", e);
-        // 備用數據
-        if (loadedUpgrades.length === 0) 
-            loadedUpgrades = [{ name: "備用火藥", desc: "傷害+5", apply: () => playerStats.globalDamage += 5 }];
-        if (loadedEnemyTypes.length === 0)
-            loadedEnemyTypes = [
-                { name: "預設史萊姆", baseHp: 50, speed: 2.0 },
-                { name: "預設獸人", baseHp: 150, speed: 1.0 },
-                { name: "預設魔王", baseHp: 500, speed: 0.5 }
-            ];
+        console.warn("載入失敗，使用備用數據", e);
+        loadedEnemyTypes = [{ name: "預設怪", baseHp: 50, speed: 1.5, gold: 10, weight: 100 }];
+        loadedUpgrades = [{ name: "測試", desc: "傷害+5", apply:()=>playerStats.globalDamage+=5 }];
         startGameUI();
     }
 }
@@ -153,100 +164,70 @@ function startGameUI() {
     document.getElementById('start-wave-btn').style.display = 'inline-block';
 }
 
-function mapUpgrades(data) {
-    return data.map(item => {
-        const type = item['type'] || item['Type'] || 'DMG'; 
-        const val = parseFloat(item['value'] || item['Value'] || 0);
-        return {
-            name: item['name'] || '未知',
-            desc: item['description'] || '無描述',
-            apply: () => {
-                switch(type.toUpperCase()) {
-                    case 'DMG': playerStats.globalDamage += val; break;
-                    case 'RNG': playerStats.globalRange += val; break;
-                    case 'SPD': playerStats.globalFireRate = Math.max(5, playerStats.globalFireRate - val); break;
-                    case 'GOLD': playerStats.goldMultiplier += val; break;
-                    case 'HP': updateLives(val); break;
-                }
-            }
-        };
-    });
-}
-
-// --- 2. 遊戲核心 ---
+// --- 3. 遊戲核心 ---
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-
-let gameState = {
-    lives: 20, money: 200, wave: 1,
-    enemies: [], towers: [], projectiles: [], isWaveActive: false
-};
-
-let playerStats = {
-    globalDamage: 0, globalRange: 0, globalFireRate: 60, goldMultiplier: 1.0, baseDamage: 15
-};
-
+let gameState = { lives: 20, money: 200, wave: 1, enemies: [], towers: [], projectiles: [], isWaveActive: false };
+let playerStats = { globalDamage: 0, globalRange: 0, globalFireRate: 60, goldMultiplier: 1.0, baseDamage: 15 };
 const path = [{x: 0, y: 100}, {x: 200, y: 100}, {x: 200, y: 400}, {x: 600, y: 400}, {x: 600, y: 200}, {x: 800, y: 200}];
 
 class Enemy {
     constructor(wave) {
-        // 隨機抽選一種敵人
-        const type = loadedEnemyTypes[Math.floor(Math.random() * loadedEnemyTypes.length)];
+        // 使用權重算法選擇敵人
+        const type = getRandomEnemyType();
         
         this.name = type.name;
+        this.goldReward = type.gold; // 儲存該敵人的掉落金幣
         this.pathIndex = 0;
         this.x = path[0].x; this.y = path[0].y;
-        this.speed = type.speed;
+        this.baseSpeed = type.speed;
+        this.currentSpeed = this.baseSpeed;
         
-        // 血量指數成長: 每波增加 20%
         const scaleMultiplier = Math.pow(1.2, wave - 1);
         this.hp = Math.floor(type.baseHp * scaleMultiplier);
         this.maxHp = this.hp;
-        
+        this.slowTimer = 0;
         this.active = true;
     }
     
     update() {
         if (!this.active) return;
+        if (this.slowTimer > 0) { this.slowTimer--; this.currentSpeed = this.baseSpeed * (1 - specialStats.slowFactor); }
+        else { this.currentSpeed = this.baseSpeed; }
+
         let target = path[this.pathIndex + 1];
         if (!target) { this.active = false; updateLives(-1); return; }
+        
         let dx = target.x - this.x, dy = target.y - this.y, dist = Math.hypot(dx, dy);
-        if (dist < this.speed) { this.x = target.x; this.y = target.y; this.pathIndex++; } 
-        else { this.x += (dx/dist)*this.speed; this.y += (dy/dist)*this.speed; }
+        if (dist < this.currentSpeed) { this.x = target.x; this.y = target.y; this.pathIndex++; } 
+        else { this.x += (dx/dist)*this.currentSpeed; this.y += (dy/dist)*this.currentSpeed; }
+    }
+    
+    takeDamage(dmg) {
+        this.hp -= dmg;
+        if (this.hp <= 0 && this.active) {
+            this.active = false;
+            // 計算掉落金幣：敵人基礎金幣 * 玩家貪婪倍率
+            updateMoney(Math.floor(this.goldReward * playerStats.goldMultiplier));
+        }
     }
     
     draw() {
         if (!this.active) return;
-        
-        // 畫文字 (名字)
-        ctx.font = "bold 16px Arial";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        
-        // 描邊讓文字更清楚
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = "black";
+        ctx.fillStyle = this.slowTimer > 0 ? '#00bfff' : 'white';
+        ctx.font = "bold 16px Arial"; ctx.textAlign = "center";
+        ctx.strokeStyle = "black"; ctx.lineWidth = 3;
         ctx.strokeText(this.name, this.x, this.y);
-        ctx.fillStyle = "white";
         ctx.fillText(this.name, this.x, this.y);
         
-        // 血條
-        const hpPercent = this.hp / this.maxHp;
-        const barWidth = 40;
         const barY = this.y - 15;
-        
-        ctx.fillStyle = "red";
-        ctx.fillRect(this.x - barWidth/2, barY, barWidth, 4);
-        ctx.fillStyle = "#00ff00";
-        ctx.fillRect(this.x - barWidth/2, barY, barWidth * hpPercent, 4);
+        ctx.fillStyle = "red"; ctx.fillRect(this.x-20, barY, 40, 4);
+        ctx.fillStyle = "#00ff00"; ctx.fillRect(this.x-20, barY, 40 * (this.hp/this.maxHp), 4);
     }
 }
 
 class Tower {
-    constructor(x, y) {
-        this.x = x; this.y = y; this.cooldown = 0; this.level = 1;
-        this.baseRange = 100; this.levelDamage = 0; this.levelRange = 0;
-    }
+    constructor(x, y) { this.x = x; this.y = y; this.cooldown = 0; this.level = 1; this.baseRange = 100; this.levelDamage = 0; this.levelRange = 0; }
     getDamage() { return playerStats.baseDamage + playerStats.globalDamage + this.levelDamage; }
     getRange() { return this.baseRange + playerStats.globalRange + this.levelRange; }
     upgrade() { this.level++; this.levelDamage += 15; this.levelRange += 15; }
@@ -269,9 +250,10 @@ class Tower {
     draw() {
         ctx.fillStyle = this.level === 1 ? '#4a90e2' : (this.level === 2 ? '#9b59b6' : '#f1c40f');
         ctx.fillRect(this.x-15, this.y-15, 30, 30);
-        ctx.fillStyle = '#fff'; ctx.font = '12px Arial'; ctx.textAlign = 'left';
-        ctx.fillText("Lv."+this.level, this.x-10, this.y-20);
-        if(selectedTower === this) { ctx.strokeStyle='#00bcd4'; ctx.beginPath(); ctx.arc(this.x,this.y,this.getRange(),0,Math.PI*2); ctx.stroke(); }
+        if (specialStats.splashRadius > 0) { ctx.strokeStyle = 'rgba(255, 68, 68, 0.5)'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(this.x,this.y,20,0,Math.PI*2); ctx.stroke(); }
+        if (specialStats.slowFactor > 0) { ctx.strokeStyle = 'rgba(0, 191, 255, 0.5)'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(this.x,this.y,25,0,Math.PI*2); ctx.stroke(); }
+        ctx.fillStyle = '#fff'; ctx.font = '12px Arial'; ctx.fillText("Lv."+this.level, this.x-10, this.y-20);
+        if(selectedTower === this) { ctx.strokeStyle='#00bcd4'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(this.x,this.y,this.getRange(),0,Math.PI*2); ctx.stroke(); }
     }
 }
 
@@ -281,72 +263,63 @@ class Projectile {
         if (!this.active) return;
         if (!this.target.active) { this.active = false; return; }
         let dx = this.target.x - this.x, dy = this.target.y - this.y, dist = Math.hypot(dx, dy);
-        if (dist < this.speed) {
-            this.active = false; this.target.hp -= this.damage;
-            if (this.target.hp <= 0) { 
-                this.target.active = false; 
-                updateMoney(Math.floor(15 * playerStats.goldMultiplier)); 
-            }
-        } else { this.x += (dx/dist)*this.speed; this.y += (dy/dist)*this.speed; }
+        if (dist < this.speed) { this.hit(this.target); } 
+        else { this.x += (dx/dist)*this.speed; this.y += (dy/dist)*this.speed; }
     }
-    draw() { if (!this.active) return; ctx.fillStyle = '#ffeb3b'; ctx.beginPath(); ctx.arc(this.x, this.y, 4, 0, Math.PI*2); ctx.fill(); }
+    hit(target) {
+        this.active = false;
+        target.takeDamage(this.damage);
+        if (specialStats.slowFactor > 0 && target.active) target.slowTimer = 60;
+        if (specialStats.splashRadius > 0) {
+            gameState.enemies.forEach(e => {
+                if (e === target || !e.active) return;
+                if (Math.hypot(e.x - this.x, e.y - this.y) <= specialStats.splashRadius) e.takeDamage(this.damage * 0.5);
+            });
+        }
+    }
+    draw() { if (!this.active) return; ctx.fillStyle = specialStats.slowFactor > 0 ? '#00bfff' : '#ffeb3b'; ctx.beginPath(); ctx.arc(this.x, this.y, 4, 0, Math.PI*2); ctx.fill(); }
 }
 
-// --- 互動與 UI ---
-let selectedTower = null;
-const upgradeMenu = document.getElementById('upgrade-menu');
+// --- UI 與流程控制 ---
+let selectedTower = null; const upgradeMenu = document.getElementById('upgrade-menu');
 
 canvas.addEventListener('mousedown', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    const rect = canvas.getBoundingClientRect(), x = e.clientX - rect.left, y = e.clientY - rect.top;
     const clicked = gameState.towers.find(t => Math.hypot(t.x-x, t.y-y) < 25);
-    
     if (clicked) {
-        selectedTower = clicked;
-        const cost = selectedTower.level * 150;
+        selectedTower = clicked; const cost = selectedTower.level * 150;
         document.getElementById('menu-title').innerText = `Lv.${selectedTower.level}`;
         document.getElementById('menu-dmg').innerText = Math.floor(selectedTower.getDamage());
         const btn = document.getElementById('btn-upgrade-action');
         btn.innerText = `升級 (-$${cost})`;
-        btn.onclick = () => {
-            if (gameState.money >= cost) { updateMoney(-cost); selectedTower.upgrade(); selectedTower = null; upgradeMenu.style.display='none'; }
-        };
+        btn.onclick = () => { if (gameState.money >= cost) { updateMoney(-cost); selectedTower.upgrade(); closeMenu(); } };
         btn.disabled = gameState.money < cost;
         upgradeMenu.style.left = (e.clientX+10)+'px'; upgradeMenu.style.top = (e.clientY-50)+'px'; upgradeMenu.style.display = 'flex';
     } else {
-        selectedTower = null; upgradeMenu.style.display = 'none';
-        if (gameState.money >= 50 && !gameState.towers.some(t => Math.hypot(t.x-x, t.y-y) < 30)) {
-            gameState.towers.push(new Tower(x, y)); updateMoney(-50);
-        }
+        closeMenu();
+        if (gameState.money >= 50 && !gameState.towers.some(t => Math.hypot(t.x-x, t.y-y) < 30)) { gameState.towers.push(new Tower(x, y)); updateMoney(-50); }
     }
 });
-
+function closeMenu() { selectedTower = null; upgradeMenu.style.display = 'none'; }
 function updateMoney(v) { gameState.money += v; document.getElementById('money').innerText = gameState.money; }
-function updateLives(v) { gameState.lives += v; document.getElementById('lives').innerText = gameState.lives; if(gameState.lives<=0) { alert("敗北！重新載入..."); location.reload(); } }
+function updateLives(v) { gameState.lives += v; document.getElementById('lives').innerText = gameState.lives; if(gameState.lives<=0) { alert("敗北！"); location.reload(); } }
 
 function startWave() {
     if (gameState.isWaveActive) return;
-    gameState.isWaveActive = true;
-    document.getElementById('start-wave-btn').style.display = 'none';
-    selectedTower = null; upgradeMenu.style.display = 'none';
-    
+    gameState.isWaveActive = true; document.getElementById('start-wave-btn').style.display = 'none'; closeMenu();
     let count = 0, max = 5 + Math.floor(gameState.wave * 1.5);
     const spawner = setInterval(() => {
         if(!gameState.isWaveActive) { clearInterval(spawner); return; }
         gameState.enemies.push(new Enemy(gameState.wave));
-        count++;
-        if(count >= max) clearInterval(spawner);
+        count++; if(count >= max) clearInterval(spawner);
     }, 800);
 }
-
 function endWave() {
     gameState.isWaveActive = false; gameState.enemies = []; gameState.projectiles = [];
     gameState.wave++; document.getElementById('wave').innerText = gameState.wave;
-    const scale = Math.pow(1.2, gameState.wave - 1).toFixed(1);
-    document.getElementById('hp-scale').innerText = scale + "x";
+    document.getElementById('hp-scale').innerText = Math.pow(1.2, gameState.wave - 1).toFixed(1) + "x";
     showDraft();
 }
-
 function showDraft() {
     const box = document.getElementById('cards-container'); box.innerHTML = '';
     const pool = loadedUpgrades.length ? loadedUpgrades : [];
@@ -359,27 +332,17 @@ function showDraft() {
     }
     document.getElementById('draft-screen').style.display = 'flex';
 }
-
-function closeMenu() {
-    selectedTower = null;
-    upgradeMenu.style.display = 'none';
-}
-
 function loop() {
     ctx.fillStyle = '#333'; ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.strokeStyle = '#555'; ctx.lineWidth = 40; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     ctx.beginPath(); ctx.moveTo(path[0].x, path[0].y); for(let i=1;i<path.length;i++) ctx.lineTo(path[i].x,path[i].y); ctx.stroke();
-
     gameState.towers.forEach(t => { t.update(); t.draw(); });
     gameState.enemies.forEach(e => { e.update(); e.draw(); });
     gameState.projectiles.forEach(p => { p.update(); p.draw(); });
-
     if(gameState.isWaveActive && gameState.enemies.length && !gameState.enemies.some(e=>e.active)) setTimeout(endWave, 500);
     requestAnimationFrame(loop);
 }
-
-initGameData();
-loop();
+initGameData(); loop();
 </script>
 </body>
 </html>

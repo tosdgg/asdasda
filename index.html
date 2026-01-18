@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>Roguelike TD V16.0 - Safe Mode</title>
+    <title>Roguelike TD V17.0 - Final Polish</title>
     <style>
         body { margin: 0; background: #222; color: #fff; font-family: 'Microsoft JhengHei', sans-serif; overflow: hidden; }
         #game-container { position: relative; display: flex; justify-content: center; margin-top: 20px; }
@@ -11,6 +11,7 @@
         #ui-layer { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 800px; height: 600px; pointer-events: none; }
         .hud { position: absolute; top: 10px; left: 10px; font-size: 18px; font-weight: bold; pointer-events: auto; text-shadow: 1px 1px 2px black; }
         
+        /* 升級選單 */
         #upgrade-menu {
             display: none; position: absolute; background: rgba(20, 20, 30, 0.95); 
             border: 2px solid #00bcd4; padding: 15px; border-radius: 8px; pointer-events: auto;
@@ -21,6 +22,7 @@
         .stat-row { display: flex; justify-content: space-between; font-size: 13px; color: #ccc; margin-bottom: 2px; }
         .stat-val { color: #fff; font-weight: bold; }
         
+        /* 按鈕樣式 */
         .btn-action { border: none; color: white; padding: 8px; cursor: pointer; border-radius: 4px; width: 100%; margin-top:5px; font-weight: bold; transition: 0.2s;}
         .btn-upgrade { background: #e67e22; } .btn-upgrade:hover { background: #d35400; }
         .btn-rotate { background: #3498db; } .btn-rotate:hover { background: #2980b9; }
@@ -28,8 +30,9 @@
         .btn-close { background: #555; margin-top: 10px;} .btn-close:hover { background: #666; }
         .btn-action:disabled { background: #444; cursor: not-allowed; opacity: 0.6; }
 
+        /* 英雄欄 */
         #hero-bar {
-            position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+            position: absolute; bottom: 10px; left: 20px; /* 改到左下角，避開右下角按鈕 */
             display: flex; gap: 10px; pointer-events: auto; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 10px;
         }
         .hero-btn {
@@ -45,6 +48,7 @@
         .hero-limit { position: absolute; top: 0; left: 0; background: rgba(255,0,0,0.8); color: #fff; font-size: 10px; padding: 2px 4px; display: none; }
         .hero-btn.disabled .hero-limit { display: block; }
 
+        /* 抽卡介面 */
         #draft-screen { 
             display: flex; position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(0,0,0,0.9); flex-direction: column; align-items: center; justify-content: center; pointer-events: auto; z-index: 10;
@@ -52,8 +56,30 @@
         .cards-container { display: flex; gap: 20px; }
         .card { width: 200px; height: 280px; background: #444; border: 2px solid #666; border-radius: 10px; padding: 20px; cursor: pointer; text-align: center; display: flex; flex-direction: column; justify-content: center;}
         
-        #controls { position: absolute; top: 50px; width: 100%; text-align: center; pointer-events: none; text-shadow: 1px 1px 2px #000; }
-        button.start-btn { pointer-events: auto; padding: 10px 30px; font-size: 20px; background: #28a745; border: none; color: white; cursor: pointer; border-radius: 5px; display: none; }
+        #loading-msg { color: #00bcd4; font-size: 24px; }
+
+        /* 🟢 右下角按鈕樣式 */
+        #controls { 
+            position: absolute; 
+            bottom: 20px; 
+            right: 20px; 
+            pointer-events: none; /* 讓容器不擋點擊 */
+        }
+        button.start-btn { 
+            pointer-events: auto; /* 按鈕本身可以點 */
+            padding: 15px 40px; 
+            font-size: 24px; 
+            background: #28a745; 
+            border: 2px solid #1e7e34; 
+            color: white; 
+            cursor: pointer; 
+            border-radius: 8px; 
+            display: none; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            font-family: 'Microsoft JhengHei', sans-serif;
+            font-weight: bold;
+        }
+        button.start-btn:hover { background: #218838; transform: scale(1.05); }
     </style>
 </head>
 <body>
@@ -73,7 +99,9 @@
             <h4 id="menu-title">塔資訊</h4>
             <div class="stat-row"><span>⚔️ 攻擊:</span> <span class="stat-val" id="menu-dmg">0</span></div>
             <div class="stat-row"><span>🎯 範圍:</span> <span class="stat-val" id="menu-rng">0</span></div>
+            <div class="stat-row"><span>⚡ 攻速:</span> <span class="stat-val" id="menu-spd">0/s</span></div>
             <div class="stat-row"><span>🛡️ 阻擋:</span> <span class="stat-val" id="menu-blk">0</span></div>
+            
             <button class="btn-action btn-upgrade" id="btn-upgrade-action" onclick="upgradeSelectedTower()">升級</button>
             <button class="btn-action btn-rotate" id="btn-rotate-action" onclick="rotateSelectedTower()">🔄 旋轉</button>
             <button class="btn-action btn-sell" id="btn-sell-action" onclick="sellSelectedTower()">出售</button>
@@ -85,22 +113,22 @@
                 <div style="font-size:12px;color:#ccc">基礎塔</div>
                 <div class="hero-cost">$50</div>
             </div>
-        </div>
+            </div>
 
         <div id="draft-screen">
-            <h2 id="draft-title">Loading...</h2>
+            <h2 id="draft-title">讀取遊戲資料...</h2>
+            <div id="loading-msg">Loading...</div>
             <div class="cards-container" id="cards-container"></div>
         </div>
 
         <div id="controls">
-            <p>祥子會發射飄動的泡泡 | 點擊英雄可調整 4 個方向</p>
-            <button class="start-btn" id="start-wave-btn" onclick="startWave()">下一波</button>
+            <button class="start-btn" id="start-wave-btn" onclick="startWave()">下一波 (Next Wave)</button>
         </div>
     </div>
 </div>
 
 <script>
-// --- V16.0 修復與更新 ---
+// --- 資料來源 ---
 const UPGRADE_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?output=csv';
 const ENEMY_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?gid=164420776&output=csv';
 const MAP_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?gid=1573121303&output=csv';
@@ -216,19 +244,13 @@ async function initGameData() {
         const rawMap = parseCSV(await mRes.text());
         path = mapPathData(rawMap);
         
-        // 確保至少有一張卡，防止抽卡時崩潰
-        if (loadedUpgrades.length === 0) {
-            console.warn("Sheet 1 (Upgrade) is empty! Adding fallback.");
-            loadedUpgrades.push({ name: "基礎彈藥", desc: "傷害+1 (備用)", apply: () => playerStats.globalDamage += 1 });
-        }
-
+        if (loadedUpgrades.length === 0) loadedUpgrades.push({ name: "基礎彈藥", desc: "傷害+1 (備用)", apply: () => playerStats.globalDamage += 1 });
         if (path.length < 2) throw new Error("Map Invalid");
         initHeroUI(); startGameUI();
     } catch (e) {
         console.error("Load Error:", e);
         path = [{x: 0, y: 100}, {x: 800, y: 100}];
         loadedEnemyTypes = [{ name: "預設怪", baseHp: 50, speed: 1.5, gold: 10, weight: 100 }];
-        // Fallback for upgrade failure
         loadedUpgrades = [{ name: "緊急修復", desc: "數據載入失敗", apply: () => playerStats.globalDamage += 1 }];
         initHeroUI(); startGameUI();
     }
@@ -268,7 +290,7 @@ function startGameUI() {
     document.getElementById('start-wave-btn').style.display = 'inline-block';
 }
 
-// --- 遊戲核心變數 ---
+// --- 遊戲核心 ---
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 let gameState = { 
@@ -357,6 +379,10 @@ class Tower {
     getDamage() { return this.isHero ? this.baseDamage + this.levelDamage : playerStats.baseDamage + playerStats.globalDamage + this.levelDamage; }
     getRange() { return this.isHero ? this.baseRange + this.levelRange : this.baseRange + playerStats.globalRange + this.levelRange; }
     getFireRate() { return this.isHero ? this.fireRate : playerStats.globalFireRate; }
+    
+    // 🟢 修正：計算每秒攻擊次數
+    getAttacksPerSecond() { return (60 / this.getFireRate()).toFixed(2); }
+
     upgrade() { 
         this.level++;
         if (this.isHero) { this.levelDamage += this.scale.dmg; this.levelRange += this.scale.rng; this.totalCost += this.level * 200; } 
@@ -373,7 +399,6 @@ class Tower {
     }
     update() {
         if (this.isHero) {
-            // Block logic
             if (this.blockedEnemies.length < this.blockCount) {
                 gameState.enemies.forEach(e => {
                     if (e.active && !e.blockedBy && this.blockedEnemies.length < this.blockCount) {
@@ -381,7 +406,6 @@ class Tower {
                     }
                 });
             }
-            // Attack logic
             let hasTarget = false; const range = this.getRange(); const width = 40; 
             gameState.enemies.forEach(e => { if (e.active && this.isInRectRange(e, range, width)) hasTarget = true; });
             this.isAttacking = hasTarget;
@@ -398,7 +422,6 @@ class Tower {
                 this.cooldown = this.getFireRate();
             }
         } else {
-            // Basic tower
             if (this.cooldown > 0) this.cooldown--;
             if (this.cooldown <= 0) {
                 let target = null, minDist = Infinity, range = this.getRange();
@@ -458,7 +481,6 @@ class Tower {
         ctx.fillStyle = 'rgba(255, 215, 0, 0.3)'; 
         ctx.fillRect(0, -width, range, width * 2); 
         
-        // 🟢 這裡修改了邊框粗度 (原本預設，現在改為 1 或 2)
         ctx.lineWidth = 1;
         ctx.strokeStyle = '#ffd700'; 
         ctx.strokeRect(0, -width, range, width * 2);
@@ -482,9 +504,11 @@ class Projectile {
         this.distanceTraveled += this.speed;
         let linearX = this.startX + this.normX * this.distanceTraveled;
         let linearY = this.startY + this.normY * this.distanceTraveled;
+        
         if (this.isPenetrating) {
             let perpX = -this.normY; let perpY = this.normX;
-            let waveOffset = Math.sin(this.distanceTraveled * 0.1) * 20;
+            // 🟢 減緩波動頻率 (0.1 -> 0.05)
+            let waveOffset = Math.sin(this.distanceTraveled * 0.05) * 20;
             this.x = linearX + perpX * waveOffset; this.y = linearY + perpY * waveOffset;
         } else {
             this.x = linearX; this.y = linearY;
@@ -540,7 +564,7 @@ function drawBuildPreview() {
         ctx.fillStyle = overlap ? 'rgba(255,0,0,0.2)' : 'rgba(255, 215, 0, 0.3)';
         ctx.fillRect(mousePos.x, mousePos.y - width, range, width * 2);
         
-        // 🟢 預覽邊框也變細
+        // 🟢 預覽邊框變細
         ctx.lineWidth = 1;
         ctx.strokeStyle = '#ffd700'; 
         ctx.strokeRect(mousePos.x, mousePos.y - width, range, width * 2);
@@ -560,10 +584,14 @@ function openUpgradeMenu(tower, mx, my) {
     document.getElementById('menu-title').innerText = `${tower.name} Lv.${tower.level}`;
     document.getElementById('menu-dmg').innerText = Math.floor(tower.getDamage());
     document.getElementById('menu-rng').innerText = Math.floor(tower.getRange());
+    // 🟢 修正：確保 UI 顯示攻速 (Basic & Hero)
+    document.getElementById('menu-spd').innerText = tower.getAttacksPerSecond() + " /s";
     document.getElementById('menu-blk').innerText = tower.isHero ? tower.blockCount : 0;
+    
     const btnUp = document.getElementById('btn-upgrade-action');
     btnUp.innerText = `升級 (-$${cost})`;
     btnUp.onclick = () => { if (gameState.money >= cost) { updateMoney(-cost); selectedTower.upgrade(); closeMenu(); } };
+    
     const btnRot = document.getElementById('btn-rotate-action');
     if (tower.isHero) {
         btnRot.style.display = 'block';
@@ -571,6 +599,7 @@ function openUpgradeMenu(tower, mx, my) {
         btnRot.innerText = `🔄 旋轉 (${dirs[tower.dir]})`;
         btnRot.onclick = rotateSelectedTower;
     } else btnRot.style.display = 'none';
+    
     const btnSell = document.getElementById('btn-sell-action');
     btnSell.innerText = `出售 (+$${sellPrice})`;
     upgradeMenu.style.left = (mx + 10) + 'px'; upgradeMenu.style.top = (my - 120) + 'px'; upgradeMenu.style.display = 'flex';
@@ -620,7 +649,6 @@ function endWave() {
 }
 function showDraft() {
     const box = document.getElementById('cards-container'); box.innerHTML = '';
-    // 🟢 安全氣囊：確保 pool 絕對不為空
     const pool = (loadedUpgrades && loadedUpgrades.length > 0) ? loadedUpgrades : 
                  [{name: "備用彈藥", desc: "強化卡讀取失敗，獲得基礎傷害", apply:()=>{playerStats.globalDamage+=1}}];
     

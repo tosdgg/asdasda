@@ -1,1 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>Roguelike Tower Defense MVP</title>
+    <style>
+        body { margin: 0; background: #222; color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
+        #game-container { position: relative; display: flex; justify-content: center; margin-top: 20px; }
+        canvas { background: #333; border: 2px solid #555; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        
+        /* UI 覆蓋層 */
+        #ui-layer { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 800px; height: 600px; pointer-events: none; }
+        .hud { position: absolute; top: 10px; left: 10px; font-size: 18px; font-weight: bold; pointer-events: auto; }
+        
+        /* 肉鴿卡牌選擇界面 */
+        #draft-screen { 
+            display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.85); flex-direction: column; align-items: center; justify-content: center; pointer-events: auto; z-index: 10;
+        }
+        #draft-screen h2 { font-size: 32px; color: #ffd700; margin-bottom: 40px; }
+        .cards-container { display: flex; gap: 20px; }
+        .card { 
+            width: 200px; height: 280px; background: #444; border: 2px solid #666; border-radius: 10px; 
+            display: flex; flex-direction: column; align-items: center; justify-content: center; 
+            cursor: pointer; transition: 0.2s; padding: 20px; text-align: center;
+        }
+        .card:hover { transform: translateY(-10px); background: #555; border-color: #00bcd4; box-shadow: 0 0 15px #00bcd4; }
+        .card h3 { color: #00bcd4; margin-bottom: 10px; }
+        .card p { font-size: 14px; color: #ccc; }
 
+        /* 放置塔的提示 */
+        #controls { position: absolute; bottom: 10px; width: 100%; text-align: center; pointer-events: none; }
+        button.start-btn { pointer-events: auto; padding: 10px 30px; font-size: 20px; background: #28a745; border: none; color: white; cursor: pointer; border-radius: 5px; }
+        button.start-btn:hover { background: #218838; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    
+    <div id="ui-layer">
+        <div class="hud">
+            <div>❤️ 生命: <span id="lives">10</span></div>
+            <div>💰 金幣: <span id="money">100</span></div>
+            <div>🌊 波數: <span id="wave">1</span></div>
+        </div>
+
+        <div id="draft-screen">
+            <h2>選擇你的強化 (Reward)</h2>
+            <div class="cards-container" id="cards-container">
+                </div>
+        </div>
+
+        <div id="controls">
+            <p>點擊地圖花費 50💰 建造防禦塔</p>
+            <button class="start-btn" id="start-wave-btn" onclick="startWave()">開始下一波</button>
+        </div>
+    </div>
+</div>
+
+<script>
+/**
+ * 核心邏輯
+ */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// 遊戲狀態
+let gameState = {
+    lives: 10,
+    money: 100,
+    wave: 1,
+    enemies: [],
+    towers: [],
+    projectiles: [],
+    isWaveActive: false,
+    frame: 0
+};
+
+// 全局強化屬性 (肉鴿元素)
+let playerStats = {
+    towerDamage: 10,
+    towerRange: 100,
+    towerFireRate: 60, // 幀數間隔 (越低越快)
+    goldMultiplier: 1.0
+};
+
+// 簡單地圖路徑 (座標點)
+const path = [
+    {x: 0, y: 100}, {x: 200, y: 100}, {x: 200, y: 400}, 
+    {x: 600, y: 400}, {x: 600, y: 200}, {x: 800, y: 200}
+];
+
+// --- 類定義 ---
+
+class Enemy {
+    constructor(waveDifficulty) {
+        this.pathIndex = 0;
+        this.x = path[0].x;
+        this.y = path[0].y;
+        this.speed = 1.5 + (waveDifficulty * 0.1);
+        this.hp = 20 + (waveDifficulty * 10);
+        this.maxHp = this.hp;
+        this.radius = 12;
+        this.active = true;
+    }
+
+    update() {
+        if (!this.active) return;
+
+        // 移動邏輯
+        let target = path[this.pathIndex + 1];
+        if (!target) { // 到達終點
+            this.active = false;
+            updateLives(-1);
+            return;
+        }
+
+        let dx = target.x - this.x;
+        let dy = target.y - this.y;
+        let dist = Math.hypot(dx, dy);
+
+        if (dist < this.speed) {
+            this.x = target.x;
+            this.y = target.y;
+            this.pathIndex++;
+        } else {
+            this.x += (dx / dist) * this.speed;
+            this.y += (dy / dist) * this.speed;
+        }
+    }
+
+    draw() {
+        if (!this.active) return;
+        ctx.fillStyle = '#ff4444';
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // 血條
+        ctx.fillStyle = 'red';
+        ctx.fillRect(this.x - 10, this.y - 20, 20, 4);
+        ctx.fillStyle = '#0f0';
+        ctx.fillRect(this.x - 10, this.y - 20, 20 * (this.hp / this.maxHp), 4);
+    }
+}
+
+class Tower {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.cooldown = 0;
+        this.range = playerStats.towerRange; // 繼承全局屬性
+    }
+
+    update() {
+        // 更新當前屬性 (應對動態強化)
+        this.range = playerStats.towerRange;
+        
+        if (this.cooldown > 0) this.cooldown--;
+
+        if (this.cooldown <= 0) {
+            // 尋找最近敵人
+            let target = null;
+            let minDist = Infinity;
+
+            gameState.enemies.forEach(enemy => {
+                if (!enemy.active) return;
+                let dist = Math.hypot(enemy.x - this.x, enemy.y - this.y);
+                if (dist <= this.range && dist < minDist) {
+                    minDist = dist;
+                    target = enemy;
+                }
+            });
+
+            if (target) {
+                this.shoot(target);
+                this.cooldown = playerStats.towerFireRate;
+            }
+        }
+    }
+
+    shoot(target) {
+        gameState.projectiles.push(new Projectile(this.x, this.y, target));
+    }
+
+    draw() {
+        ctx.fillStyle = '#4a90e2';
+        ctx.fillRect(this.x - 15, this.y - 15, 30, 30);
+        
+        // 攻擊範圍 (僅滑鼠懸停時顯示會更好，這裡簡化處理不顯示或淡顯示)
+        // ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        // ctx.beginPath();
+        // ctx.arc(this.x, this.y, this.range, 0, Math.PI * 2);
+        // ctx.stroke();
+    }
+}
+
+class Projectile {
+    constructor(x, y, target) {
+        this.x = x;
+        this.y = y;
+        this.target = target;
+        this.speed = 8;
+        this.damage = playerStats.towerDamage;
+        this.active = true;
+    }
+
+    update() {
+        if (!this.active) return;
+        if (!this.target.active) {
+            this.active = false;
+            return;
+        }
+
+        let dx = this.target.x - this.x;
+        let dy = this.target.y - this.y;
+        let dist = Math.hypot(dx, dy);
+
+        if (dist < this.speed) {
+            this.active = false;
+            this.target.hp -= this.damage;
+            if (this.target.hp <= 0) {
+                this.target.active = false;
+                updateMoney(Math.floor(10 * playerStats.goldMultiplier));
+            }
+        } else {
+            this.x += (dx / dist) * this.speed;
+            this.y += (dy / dist) * this.speed;
+        }
+    }
+
+    draw() {
+        if (!this.active) return;
+        ctx.fillStyle = '#ffeb3b';
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, 4, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+// --- 遊戲流程控制 ---
+
+function startWave() {
+    if (gameState.isWaveActive) return;
+    gameState.isWaveActive = true;
+    document.getElementById('start-wave-btn').style.display = 'none';
+    
+    let enemiesToSpawn = 5 + gameState.wave * 2;
+    let spawnInterval = 60; // frames
+    let spawnedCount = 0;
+
+    const spawner = setInterval(() => {
+        if (!gameState.isWaveActive) { clearInterval(spawner); return; }
+        gameState.enemies.push(new Enemy(gameState.wave));
+        spawnedCount++;
+        if (spawnedCount >= enemiesToSpawn) clearInterval(spawner);
+    }, 1000);
+}
+
+function checkWaveEnd() {
+    if (!gameState.isWaveActive) return;
+
+    // 判斷是否所有敵人都死光或跑掉
+    const activeEnemies = gameState.enemies.some(e => e.active);
+    // 還要檢查是否還有待生成的敵人? 這裡簡化，假設生成器跑完且場上無怪
+    // 簡單判斷：如果場上沒怪了，且該波應該生成的數量都生成了 (這里用簡單邏輯：敵人陣列長度足夠且都inactive)
+    // 為求穩定，這裡只檢查場上是否為空，且確保已過了一定時間
+    
+    if (!activeEnemies && gameState.enemies.length > 0) {
+        // 等子彈飛一會兒
+        setTimeout(() => {
+            if (gameState.isWaveActive) { // Double check
+                endWave();
+            }
+        }, 1000);
+    }
+}
+
+function endWave() {
+    gameState.isWaveActive = false;
+    gameState.enemies = [];
+    gameState.projectiles = [];
+    gameState.wave++;
+    document.getElementById('wave').innerText = gameState.wave;
+    showDraftScreen();
+}
+
+// --- 肉鴿強化系統 (Draft) ---
+
+const upgrades = [
+    { name: "強力火藥", desc: "防禦塔傷害 +5", apply: () => playerStats.towerDamage += 5 },
+    { name: "長管技術", desc: "攻擊範圍 +30", apply: () => playerStats.towerRange += 30 },
+    { name: "快速裝填", desc: "攻速 +15%", apply: () => playerStats.towerFireRate = Math.max(10, playerStats.towerFireRate * 0.85) },
+    { name: "貪婪", desc: "擊殺金幣 +50%", apply: () => playerStats.goldMultiplier += 0.5 },
+    { name: "緊急修復", desc: "生命值 +3", apply: () => updateLives(3) }
+];
+
+function showDraftScreen() {
+    const screen = document.getElementById('draft-screen');
+    const container = document.getElementById('cards-container');
+    container.innerHTML = ''; // 清空舊卡
+
+    // 隨機選3張卡
+    for (let i = 0; i < 3; i++) {
+        const upgrade = upgrades[Math.floor(Math.random() * upgrades.length)];
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `<h3>${upgrade.name}</h3><p>${upgrade.desc}</p>`;
+        card.onclick = () => selectUpgrade(upgrade);
+        container.appendChild(card);
+    }
+    
+    screen.style.display = 'flex';
+}
+
+function selectUpgrade(upgrade) {
+    upgrade.apply();
+    document.getElementById('draft-screen').style.display = 'none';
+    document.getElementById('start-wave-btn').style.display = 'inline-block';
+}
+
+// --- 輸入與輔助 ---
+
+canvas.addEventListener('mousedown', (e) => {
+    if (gameState.isWaveActive) return; // 戰鬥中不能建塔 (可選規則)
+    
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    if (gameState.money >= 50) {
+        // 簡單判定是否點在路徑上 (碰撞檢測) - 這裡略過，直接放
+        gameState.towers.push(new Tower(x, y));
+        updateMoney(-50);
+    }
+});
+
+function updateMoney(amount) {
+    gameState.money += amount;
+    document.getElementById('money').innerText = gameState.money;
+}
+
+function updateLives(amount) {
+    gameState.lives += amount;
+    document.getElementById('lives').innerText = gameState.lives;
+    if (gameState.lives <= 0) {
+        alert("Game Over! Refresh to restart.");
+        location.reload();
+    }
+}
+
+// --- 渲染循環 ---
+
+function loop() {
+    // 清空畫布
+    ctx.fillStyle = '#333';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // 畫路徑
+    ctx.strokeStyle = '#555';
+    ctx.lineWidth = 40;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(path[0].x, path[0].y);
+    for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
+    ctx.stroke();
+
+    // 更新與繪製實體
+    gameState.towers.forEach(t => { t.update(); t.draw(); });
+    gameState.enemies.forEach(e => { e.update(); e.draw(); });
+    gameState.projectiles.forEach(p => { p.update(); p.draw(); });
+
+    // 檢查波次狀態
+    if (gameState.isWaveActive) checkWaveEnd();
+
+    requestAnimationFrame(loop);
+}
+
+// 啟動
+loop();
+
+</script>
+</body>
+</html>

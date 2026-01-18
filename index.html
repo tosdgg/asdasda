@@ -2,19 +2,17 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>Roguelike Tower Defense MVP</title>
+    <title>Roguelike TD - Google Sheets Powered</title>
     <style>
         body { margin: 0; background: #222; color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
         #game-container { position: relative; display: flex; justify-content: center; margin-top: 20px; }
         canvas { background: #333; border: 2px solid #555; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
         
-        /* UI 覆蓋層 */
         #ui-layer { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 800px; height: 600px; pointer-events: none; }
         .hud { position: absolute; top: 10px; left: 10px; font-size: 18px; font-weight: bold; pointer-events: auto; }
         
-        /* 肉鴿卡牌選擇界面 */
         #draft-screen { 
-            display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            display: flex; position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(0,0,0,0.85); flex-direction: column; align-items: center; justify-content: center; pointer-events: auto; z-index: 10;
         }
         #draft-screen h2 { font-size: 32px; color: #ffd700; margin-bottom: 40px; }
@@ -27,10 +25,12 @@
         .card:hover { transform: translateY(-10px); background: #555; border-color: #00bcd4; box-shadow: 0 0 15px #00bcd4; }
         .card h3 { color: #00bcd4; margin-bottom: 10px; }
         .card p { font-size: 14px; color: #ccc; }
+        
+        #loading-msg { color: #00bcd4; font-size: 24px; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.5; } }
 
-        /* 放置塔的提示 */
         #controls { position: absolute; bottom: 10px; width: 100%; text-align: center; pointer-events: none; }
-        button.start-btn { pointer-events: auto; padding: 10px 30px; font-size: 20px; background: #28a745; border: none; color: white; cursor: pointer; border-radius: 5px; }
+        button.start-btn { pointer-events: auto; padding: 10px 30px; font-size: 20px; background: #28a745; border: none; color: white; cursor: pointer; border-radius: 5px; display: none; }
         button.start-btn:hover { background: #218838; }
     </style>
 </head>
@@ -47,9 +47,9 @@
         </div>
 
         <div id="draft-screen">
-            <h2>選擇你的強化 (Reward)</h2>
-            <div class="cards-container" id="cards-container">
-                </div>
+            <h2 id="draft-title">載入數據中...</h2>
+            <div id="loading-msg">正在從 Google Sheets 讀取卡牌數據...</div>
+            <div class="cards-container" id="cards-container"></div>
         </div>
 
         <div id="controls">
@@ -60,7 +60,265 @@
 </div>
 
 <script>
-/**
+// --- 1. 配置與數據載入 ---
+const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?output=csv';
+
+let loadedUpgrades = [];
+
+// CSV 解析器
+function parseCSV(text) {
+    const lines = text.trim().split('\n');
+    const headers = lines[0].split(',').map(h => h.trim()); // 假設第一行是標題
+    const data = [];
+
+    for (let i = 1; i < lines.length; i++) {
+        const currentline = lines[i].split(',');
+        if(currentline.length < headers.length) continue; // 跳過壞行
+        
+        let obj = {};
+        for (let j = 0; j < headers.length; j++) {
+            obj[headers[j]] = currentline[j] ? currentline[j].trim() : "";
+        }
+        data.push(obj);
+    }
+    return data;
+}
+
+// 數據映射：將 CSV 的文字轉換為遊戲邏輯
+// 請根據你的 Google Sheet 欄位名稱修改這裡的 key (例如 'type', 'value')
+function mapDataToGameLogic(data) {
+    return data.map(item => {
+        // 預設值，防止 CSV 缺漏
+        const type = item['type'] || item['Type'] || 'DMG'; 
+        const val = parseFloat(item['value'] || item['Value'] || 0);
+        const name = item['name'] || item['Name'] || '未知強化';
+        const desc = item['description'] || item['desc'] || item['Description'] || '無描述';
+
+        return {
+            name: name,
+            desc: desc,
+            apply: () => {
+                // 根據 type 決定效果
+                switch(type.toUpperCase()) {
+                    case 'DMG': playerStats.towerDamage += val; break;
+                    case 'RNG': playerStats.towerRange += val; break;
+                    case 'SPD': playerStats.towerFireRate = Math.max(5, playerStats.towerFireRate - val); break; // 減法加速
+                    case 'GOLD': playerStats.goldMultiplier += val; break;
+                    case 'HP': updateLives(val); break;
+                    default: console.warn('未知效果類型:', type);
+                }
+            }
+        };
+    });
+}
+
+// 啟動時載入數據
+async function initGameData() {
+    try {
+        const response = await fetch(CSV_URL);
+        const text = await response.text();
+        const rawData = parseCSV(text);
+        
+        loadedUpgrades = mapDataToGameLogic(rawData);
+        
+        console.log("成功載入卡牌:", loadedUpgrades);
+        
+        // 載入完成，隱藏 Loading，顯示開始按鈕 (或第一次 Draft)
+        document.getElementById('loading-msg').style.display = 'none';
+        document.getElementById('draft-title').innerText = "準備就緒";
+        document.getElementById('draft-screen').style.display = 'none';
+        document.getElementById('start-wave-btn').style.display = 'inline-block';
+        
+    } catch (e) {
+        console.error("載入失敗:", e);
+        document.getElementById('loading-msg').innerText = "數據載入失敗，請檢查控制台 (F12)";
+        document.getElementById('loading-msg').style.color = "red";
+        
+        // 備用數據，避免遊戲卡死
+        loadedUpgrades = [
+            { name: "備用火藥", desc: "傷害+5 (離線模式)", apply: () => playerStats.towerDamage += 5 },
+            { name: "備用鏡頭", desc: "範圍+20 (離線模式)", apply: () => playerStats.towerRange += 20 }
+        ];
+        document.getElementById('start-wave-btn').style.display = 'inline-block';
+    }
+}
+
+// --- 2. 遊戲核心邏輯 (部分微調) ---
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+let gameState = {
+    lives: 10, money: 100, wave: 1,
+    enemies: [], towers: [], projectiles: [], isWaveActive: false
+};
+
+let playerStats = {
+    towerDamage: 10, towerRange: 100, towerFireRate: 60, goldMultiplier: 1.0
+};
+
+const path = [{x: 0, y: 100}, {x: 200, y: 100}, {x: 200, y: 400}, {x: 600, y: 400}, {x: 600, y: 200}, {x: 800, y: 200}];
+
+class Enemy {
+    constructor(waveDifficulty) {
+        this.pathIndex = 0;
+        this.x = path[0].x; this.y = path[0].y;
+        this.speed = 1.5 + (waveDifficulty * 0.1);
+        this.hp = 20 + (waveDifficulty * 10);
+        this.maxHp = this.hp; this.radius = 12; this.active = true;
+    }
+    update() {
+        if (!this.active) return;
+        let target = path[this.pathIndex + 1];
+        if (!target) { this.active = false; updateLives(-1); return; }
+        let dx = target.x - this.x, dy = target.y - this.y, dist = Math.hypot(dx, dy);
+        if (dist < this.speed) { this.x = target.x; this.y = target.y; this.pathIndex++; } 
+        else { this.x += (dx/dist)*this.speed; this.y += (dy/dist)*this.speed; }
+    }
+    draw() {
+        if (!this.active) return;
+        ctx.fillStyle = '#ff4444'; ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = 'red'; ctx.fillRect(this.x-10, this.y-20, 20, 4);
+        ctx.fillStyle = '#0f0'; ctx.fillRect(this.x-10, this.y-20, 20*(this.hp/this.maxHp), 4);
+    }
+}
+
+class Tower {
+    constructor(x, y) { this.x = x; this.y = y; this.cooldown = 0; }
+    update() {
+        this.range = playerStats.towerRange;
+        if (this.cooldown > 0) this.cooldown--;
+        if (this.cooldown <= 0) {
+            let target = null, minDist = Infinity;
+            gameState.enemies.forEach(e => {
+                if (!e.active) return;
+                let dist = Math.hypot(e.x - this.x, e.y - this.y);
+                if (dist <= this.range && dist < minDist) { minDist = dist; target = e; }
+            });
+            if (target) {
+                gameState.projectiles.push(new Projectile(this.x, this.y, target));
+                this.cooldown = playerStats.towerFireRate;
+            }
+        }
+    }
+    draw() { ctx.fillStyle = '#4a90e2'; ctx.fillRect(this.x-15, this.y-15, 30, 30); }
+}
+
+class Projectile {
+    constructor(x, y, target) { this.x = x; this.y = y; this.target = target; this.speed = 8; this.damage = playerStats.towerDamage; this.active = true; }
+    update() {
+        if (!this.active) return;
+        if (!this.target.active) { this.active = false; return; }
+        let dx = this.target.x - this.x, dy = this.target.y - this.y, dist = Math.hypot(dx, dy);
+        if (dist < this.speed) {
+            this.active = false; this.target.hp -= this.damage;
+            if (this.target.hp <= 0) { this.target.active = false; updateMoney(Math.floor(10 * playerStats.goldMultiplier)); }
+        } else { this.x += (dx/dist)*this.speed; this.y += (dy/dist)*this.speed; }
+    }
+    draw() { if (!this.active) return; ctx.fillStyle = '#ffeb3b'; ctx.beginPath(); ctx.arc(this.x, this.y, 4, 0, Math.PI*2); ctx.fill(); }
+}
+
+// --- 流程控制 ---
+function startWave() {
+    if (gameState.isWaveActive) return;
+    gameState.isWaveActive = true;
+    document.getElementById('start-wave-btn').style.display = 'none';
+    let enemiesToSpawn = 5 + gameState.wave * 2, spawnedCount = 0;
+    const spawner = setInterval(() => {
+        if (!gameState.isWaveActive) { clearInterval(spawner); return; }
+        gameState.enemies.push(new Enemy(gameState.wave));
+        spawnedCount++;
+        if (spawnedCount >= enemiesToSpawn) clearInterval(spawner);
+    }, 1000);
+}
+
+function checkWaveEnd() {
+    if (!gameState.isWaveActive) return;
+    const activeEnemies = gameState.enemies.some(e => e.active);
+    if (!activeEnemies && gameState.enemies.length > 0) {
+        setTimeout(() => { if (gameState.isWaveActive) endWave(); }, 1000);
+    }
+}
+
+function endWave() {
+    gameState.isWaveActive = false;
+    gameState.enemies = []; gameState.projectiles = [];
+    gameState.wave++; document.getElementById('wave').innerText = gameState.wave;
+    showDraftScreen();
+}
+
+// --- 卡牌選擇 ---
+function showDraftScreen() {
+    const screen = document.getElementById('draft-screen');
+    const container = document.getElementById('cards-container');
+    const title = document.getElementById('draft-title');
+    
+    title.innerText = "選擇你的強化 (Reward)";
+    container.innerHTML = ''; 
+
+    // 從 loadedUpgrades 中隨機選
+    // 如果數據還沒載入完，使用空陣列
+    const pool = loadedUpgrades.length > 0 ? loadedUpgrades : [];
+
+    if (pool.length === 0) {
+        container.innerHTML = "<p>沒有可用的卡牌數據</p>";
+    } else {
+        for (let i = 0; i < 3; i++) {
+            const upgrade = pool[Math.floor(Math.random() * pool.length)];
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.innerHTML = `<h3>${upgrade.name}</h3><p>${upgrade.desc}</p>`;
+            card.onclick = () => selectUpgrade(upgrade);
+            container.appendChild(card);
+        }
+    }
+    screen.style.display = 'flex';
+}
+
+function selectUpgrade(upgrade) {
+    upgrade.apply();
+    document.getElementById('draft-screen').style.display = 'none';
+    document.getElementById('start-wave-btn').style.display = 'inline-block';
+}
+
+// --- 輸入與工具 ---
+canvas.addEventListener('mousedown', (e) => {
+    if (gameState.isWaveActive) return; 
+    const rect = canvas.getBoundingClientRect();
+    if (gameState.money >= 50) {
+        gameState.towers.push(new Tower(e.clientX - rect.left, e.clientY - rect.top));
+        updateMoney(-50);
+    }
+});
+
+function updateMoney(amount) { gameState.money += amount; document.getElementById('money').innerText = gameState.money; }
+function updateLives(amount) { 
+    gameState.lives += amount; document.getElementById('lives').innerText = gameState.lives;
+    if (gameState.lives <= 0) { alert("Game Over!"); location.reload(); }
+}
+
+function loop() {
+    ctx.fillStyle = '#333'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    ctx.strokeStyle = '#555'; ctx.lineWidth = 40; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(path[0].x, path[0].y);
+    for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
+    ctx.stroke();
+
+    gameState.towers.forEach(t => { t.update(); t.draw(); });
+    gameState.enemies.forEach(e => { e.update(); e.draw(); });
+    gameState.projectiles.forEach(p => { p.update(); p.draw(); });
+
+    if (gameState.isWaveActive) checkWaveEnd();
+    requestAnimationFrame(loop);
+}
+
+// 啟動資料載入
+initGameData();
+loop();
+
+</script>
+</body>
+</html>/**
  * 核心邏輯
  */
 const canvas = document.getElementById('gameCanvas');

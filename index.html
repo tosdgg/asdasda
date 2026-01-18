@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>Roguelike TD V9.1 - Corrected Map GID</title>
+    <title>Roguelike TD V9.0 - Tags & Preview</title>
     <style>
         body { margin: 0; background: #222; color: #fff; font-family: 'Microsoft JhengHei', sans-serif; overflow: hidden; }
         #game-container { position: relative; display: flex; justify-content: center; margin-top: 20px; }
@@ -11,7 +11,6 @@
         #ui-layer { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 800px; height: 600px; pointer-events: none; }
         .hud { position: absolute; top: 10px; left: 10px; font-size: 18px; font-weight: bold; pointer-events: auto; text-shadow: 1px 1px 2px black; }
         
-        /* 升級選單 */
         #upgrade-menu {
             display: none; position: absolute; background: rgba(20, 20, 30, 0.95); 
             border: 2px solid #00bcd4; padding: 15px; border-radius: 8px; pointer-events: auto;
@@ -19,16 +18,17 @@
             box-shadow: 0 0 20px rgba(0,0,0,0.8);
         }
         #upgrade-menu h4 { margin: 0 0 5px 0; color: #00bcd4; border-bottom: 1px solid #444; padding-bottom: 5px; }
+        
         .stat-row { display: flex; justify-content: space-between; font-size: 13px; color: #ccc; margin-bottom: 2px; }
         .stat-val { color: #fff; font-weight: bold; }
         .stat-val.highlight { color: #f1c40f; }
+
         .btn-group { display: flex; gap: 5px; margin-top: 5px; }
         .btn-upgrade { background: #e67e22; border: none; color: white; padding: 8px; cursor: pointer; border-radius: 4px; flex: 1; font-weight: bold;}
         .btn-upgrade:disabled { background: #555; cursor: not-allowed; opacity: 0.7; }
         .btn-sell { background: #c0392b; border: none; color: white; padding: 8px; cursor: pointer; border-radius: 4px; flex: 1; font-weight: bold;}
         .btn-close { background: #555; width: 100%; margin-top: 5px; border: none; padding: 5px; color: #aaa; cursor: pointer; border-radius: 4px; }
 
-        /* 卡牌選單 */
         #draft-screen { 
             display: flex; position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(0,0,0,0.9); flex-direction: column; align-items: center; justify-content: center; pointer-events: auto; z-index: 10;
@@ -59,13 +59,13 @@
         </div>
 
         <div id="upgrade-menu">
-            <h4 id="menu-title">塔資訊</h4>
-            <div class="stat-row"><span>⚔️ 攻擊:</span> <span class="stat-val" id="menu-dmg">0</span></div>
+            <h4 id="menu-title">防禦塔 Lv.1</h4>
+            <div class="stat-row"><span>⚔️ 攻擊力:</span> <span class="stat-val" id="menu-dmg">0</span></div>
             <div class="stat-row"><span>🎯 範圍:</span> <span class="stat-val" id="menu-rng">0</span></div>
             <div class="stat-row"><span>⚡ 攻速:</span> <span class="stat-val highlight" id="menu-spd">0/s</span></div>
             <div class="btn-group"><button class="btn-upgrade" id="btn-upgrade-action" onclick="upgradeSelectedTower()">升級</button></div>
             <div class="btn-group"><button class="btn-sell" id="btn-sell-action" onclick="sellSelectedTower()">出售</button></div>
-            <button class="btn-close" onclick="closeMenu()">關閉</button>
+            <button class="btn-close" onclick="closeMenu()">關閉選單</button>
         </div>
 
         <div id="draft-screen">
@@ -75,30 +75,21 @@
         </div>
 
         <div id="controls">
-            <p>點擊空地建造 ($50) | 點擊防禦塔升級/出售</p>
+            <p>移動滑鼠預覽建造 ($50) | 點擊防禦塔查看詳情</p>
             <button class="start-btn" id="start-wave-btn" onclick="startWave()">下一波 (Next Wave)</button>
         </div>
     </div>
 </div>
 
 <script>
-// --- 1. 連結設定 (已修正) ---
+// --- 1. 設置與 Tag 解析器 ---
 const UPGRADE_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?output=csv';
-
-// 🆕 Sheet 2 (敵人) : gid=164420776
-const ENEMY_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?gid=164420776&output=csv';
-
-// 🆕 Sheet 3 (地圖) : gid=1573121303
-const MAP_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?gid=1573121303&output=csv';
+const ENEMY_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?gid=754158994&output=csv';
 
 let loadedUpgrades = [];
 let loadedEnemyTypes = [];
-// 預設路徑 (防止 CSV 壞掉時遊戲無法運行)
-let gamePath = [{x: 0, y: 300}, {x: 800, y: 300}]; 
-
 let specialStats = { slowFactor: 0, splashRadius: 0 };
-
-// --- 2. 數據解析 ---
+let mousePos = { x: -100, y: -100 }; // 追蹤滑鼠位置
 
 function parseCSV(text) {
     const lines = text.trim().split('\n');
@@ -114,54 +105,77 @@ function parseCSV(text) {
     return data;
 }
 
-function mapPathData(data) {
-    // 支援大小寫 x, y
-    const validPoints = data
-        .filter(item => (item['x'] || item['X']) && (item['y'] || item['Y']))
-        .map(item => ({
-            x: parseFloat(item['x'] || item['X']),
-            y: parseFloat(item['y'] || item['Y'])
-        }));
+// --- V9.0 新增: Tag 解析邏輯 ---
+function applyTags(tagString) {
+    if (!tagString) return;
     
-    if (validPoints.length >= 2) return validPoints;
-    return null;
-}
+    // 正則表達式：尋找 #code數值 (例如 #dmg50, #rag-30)
+    // 支援小數點，支援負號
+    const regex = /#([a-zA-Z]+)([-]?\d+(\.\d+)?)/g;
+    let match;
 
-function mapEnemies(data) {
-    return data.filter(item => item['name']).map(item => ({
-        name: item['name'],
-        baseHp: parseFloat(item['hp'] || item['Hp'] || 50) || 50,
-        speed: parseFloat(item['speed'] || item['Speed'] || 1.5) || 1.5,
-        gold: parseFloat(item['gold'] || item['Gold'] || 15) || 15,
-        weight: parseFloat(item['weight'] || item['Weight'] || 10) || 10
-    }));
+    while ((match = regex.exec(tagString)) !== null) {
+        const code = match[1].toLowerCase(); // 代碼 (如 dmg)
+        const val = parseFloat(match[2]);    // 數值 (如 50, -30)
+
+        switch(code) {
+            case 'dmg': playerStats.globalDamage += val; break;
+            case 'rng': // 兼容兩種寫法
+            case 'rag': playerStats.globalRange += val; break;
+            case 'spd': playerStats.globalFireRate = Math.max(5, playerStats.globalFireRate - val); break; // 注意：這裡val是減少的冷卻幀
+            case 'coin': // 兼容 gold/coin
+            case 'gold': playerStats.goldMultiplier += (val / 100); break; // 假設輸入50代表50%
+            case 'hp': updateLives(val); break;
+            case 'ice': specialStats.slowFactor = Math.min(0.8, specialStats.slowFactor + (val/100)); break;
+            case 'aoe': specialStats.splashRadius += val; break;
+        }
+    }
 }
 
 function mapUpgrades(data) {
     return data.map(item => {
-        const type = (item['type'] || item['Type'] || 'DMG').toUpperCase();
+        // 優先讀取 'tags' 欄位，如果沒有則使用舊邏輯
+        const tags = item['tags'] || item['Tags'];
+        
+        // 舊邏輯兼容 (Type/Value)
+        const type = (item['type'] || item['Type'] || '').toUpperCase();
         const val = parseFloat(item['value'] || item['Value'] || 0);
+
         return {
-            name: item['name'] || '未知', desc: item['description'] || '',
+            name: item['name'] || '未知', 
+            desc: item['description'] || '',
             apply: () => {
-                switch(type) {
-                    case 'DMG': playerStats.globalDamage += val; break;
-                    case 'RNG': playerStats.globalRange += val; break;
-                    case 'SPD': playerStats.globalFireRate = Math.max(5, playerStats.globalFireRate - val); break;
-                    case 'GOLD': playerStats.goldMultiplier += val; break;
-                    case 'HP': updateLives(val); break;
-                    case 'ICE': specialStats.slowFactor = Math.min(0.8, specialStats.slowFactor + val); break;
-                    case 'AOE': specialStats.splashRadius += val; break;
+                // 如果有 Tags，優先解析 Tags
+                if (tags && tags.length > 0) {
+                    applyTags(tags);
+                } else if (type) {
+                    // 舊系統回退
+                    let tagStr = "";
+                    if(type === 'DMG') tagStr = `#dmg${val}`;
+                    else if(type === 'RNG') tagStr = `#rng${val}`;
+                    else if(type === 'SPD') tagStr = `#spd${val}`;
+                    else if(type === 'GOLD') tagStr = `#gold${val*100}`; // 舊系統是小數，轉成百分比
+                    else if(type === 'HP') tagStr = `#hp${val}`;
+                    applyTags(tagStr);
                 }
             }
         };
     });
 }
 
+function mapEnemies(data) {
+    return data.filter(item => item['name']).map(item => ({
+        name: item['name'],
+        baseHp: parseFloat(item['hp'] || 50) || 50,
+        speed: parseFloat(item['speed'] || 1.5) || 1.5,
+        gold: parseFloat(item['gold'] || 15) || 15,
+        weight: parseFloat(item['weight'] || 10) || 10
+    }));
+}
+
 function getRandomEnemyType() {
-    if (!loadedEnemyTypes || loadedEnemyTypes.length === 0) return { name: "BUG", baseHp: 50, speed: 1.0, gold: 10, weight: 1 };
+    if (!loadedEnemyTypes || loadedEnemyTypes.length === 0) return { name: "BUG史萊姆", baseHp: 50, speed: 1.0, gold: 10, weight: 1 };
     const totalWeight = loadedEnemyTypes.reduce((sum, type) => sum + type.weight, 0);
-    if (totalWeight <= 0) return loadedEnemyTypes[0];
     let random = Math.random() * totalWeight;
     for (const type of loadedEnemyTypes) {
         if (random < type.weight) return type;
@@ -172,29 +186,13 @@ function getRandomEnemyType() {
 
 async function initGameData() {
     try {
-        const [uRes, eRes, mRes] = await Promise.all([
-            fetch(UPGRADE_CSV_URL), 
-            fetch(ENEMY_CSV_URL),
-            fetch(MAP_CSV_URL)
-        ]);
-        
+        const [uRes, eRes] = await Promise.all([fetch(UPGRADE_CSV_URL), fetch(ENEMY_CSV_URL)]);
         loadedUpgrades = mapUpgrades(parseCSV(await uRes.text()));
         loadedEnemyTypes = mapEnemies(parseCSV(await eRes.text()));
-        
-        // 載入自定義地圖
-        const customPath = mapPathData(parseCSV(await mRes.text()));
-        if (customPath) {
-            gamePath = customPath;
-            console.log("✅ 自定義地圖載入成功:", gamePath);
-        } else {
-            console.warn("⚠️ 自定義地圖無效，使用預設直線");
-        }
-
-        if(loadedEnemyTypes.length === 0) throw new Error("無敵人數據");
+        if(loadedEnemyTypes.length === 0) throw new Error("CSV空");
         startGameUI();
     } catch (e) {
         console.error("載入失敗:", e);
-        // 保底
         loadedEnemyTypes = [{ name: "預設怪", baseHp: 50, speed: 1.5, gold: 10, weight: 100 }];
         loadedUpgrades = [{ name: "測試卡", desc: "傷害+5", apply:()=>playerStats.globalDamage+=5 }];
         startGameUI();
@@ -207,22 +205,18 @@ function startGameUI() {
     document.getElementById('start-wave-btn').style.display = 'inline-block';
 }
 
-// --- 3. 遊戲核心 ---
+// --- 2. 遊戲核心 ---
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-let gameState = { 
-    lives: 20, money: 200, wave: 1, 
-    enemies: [], towers: [], projectiles: [], 
-    isWaveActive: false, isEndingWave: false 
-};
+let gameState = { lives: 20, money: 200, wave: 1, enemies: [], towers: [], projectiles: [], isWaveActive: false, isEndingWave: false };
 let playerStats = { globalDamage: 0, globalRange: 0, globalFireRate: 60, goldMultiplier: 1.0, baseDamage: 15 };
+const path = [{x: 0, y: 100}, {x: 200, y: 100}, {x: 200, y: 400}, {x: 600, y: 400}, {x: 600, y: 200}, {x: 800, y: 200}];
 
 class Enemy {
     constructor(wave) {
         const type = getRandomEnemyType();
         this.name = type.name; this.goldReward = type.gold;
-        this.pathIndex = 0; 
-        this.x = gamePath[0].x; this.y = gamePath[0].y; 
+        this.pathIndex = 0; this.x = path[0].x; this.y = path[0].y;
         this.baseSpeed = type.speed; this.currentSpeed = this.baseSpeed;
         const scaleMultiplier = Math.pow(1.2, wave - 1);
         this.hp = Math.floor(type.baseHp * scaleMultiplier);
@@ -233,10 +227,8 @@ class Enemy {
         if (!this.active) return;
         if (this.slowTimer > 0) { this.slowTimer--; this.currentSpeed = this.baseSpeed * (1 - specialStats.slowFactor); }
         else { this.currentSpeed = this.baseSpeed; }
-        
-        let target = gamePath[this.pathIndex + 1]; 
+        let target = path[this.pathIndex + 1];
         if (!target) { this.active = false; updateLives(-1); return; }
-        
         let dx = target.x - this.x, dy = target.y - this.y, dist = Math.hypot(dx, dy);
         if (dist < this.currentSpeed) { this.x = target.x; this.y = target.y; this.pathIndex++; } 
         else { this.x += (dx/dist)*this.currentSpeed; this.y += (dy/dist)*this.currentSpeed; }
@@ -268,10 +260,7 @@ class Tower {
     getDamage() { return playerStats.baseDamage + playerStats.globalDamage + this.levelDamage; }
     getRange() { return this.baseRange + playerStats.globalRange + this.levelRange; }
     getAttacksPerSecond() { return (60 / playerStats.globalFireRate).toFixed(2); }
-    upgrade() { 
-        this.level++; this.levelDamage += 15; this.levelRange += 15; 
-        this.totalCost += (this.level - 1) * 150; 
-    }
+    upgrade() { this.level++; this.levelDamage += 15; this.levelRange += 15; this.totalCost += (this.level - 1) * 150; }
     update() {
         if (this.cooldown > 0) this.cooldown--;
         if (this.cooldown <= 0) {
@@ -321,6 +310,13 @@ class Projectile {
 // --- UI & Control ---
 let selectedTower = null; const upgradeMenu = document.getElementById('upgrade-menu');
 
+// 追蹤滑鼠位置 (為了預覽功能)
+canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    mousePos.x = e.clientX - rect.left;
+    mousePos.y = e.clientY - rect.top;
+});
+
 canvas.addEventListener('mousedown', (e) => {
     const rect = canvas.getBoundingClientRect(), x = e.clientX - rect.left, y = e.clientY - rect.top;
     const clicked = gameState.towers.find(t => Math.hypot(t.x-x, t.y-y) < 25);
@@ -329,7 +325,6 @@ canvas.addEventListener('mousedown', (e) => {
         openUpgradeMenu(clicked, e.clientX, e.clientY);
     } else {
         closeMenu();
-        // 建造塔 (簡易版：允許蓋在任何地方)
         if (gameState.money >= 50 && !gameState.towers.some(t => Math.hypot(t.x-x, t.y-y) < 30)) { 
             gameState.towers.push(new Tower(x, y)); 
             updateMoney(-50); 
@@ -337,26 +332,58 @@ canvas.addEventListener('mousedown', (e) => {
     }
 });
 
+// V9.0: 繪製建造預覽
+function drawBuildPreview() {
+    // 如果錢不夠，或者滑鼠在選單上，就不畫
+    if (gameState.money < 50 || selectedTower) return;
+
+    // 檢查是否重疊
+    const overlap = gameState.towers.some(t => Math.hypot(t.x - mousePos.x, t.y - mousePos.y) < 30);
+    
+    ctx.globalAlpha = 0.5; // 半透明
+    
+    // 預覽塔身
+    ctx.fillStyle = overlap ? '#ff4444' : '#4a90e2'; // 紅色=不可建, 藍色=可建
+    ctx.fillRect(mousePos.x - 15, mousePos.y - 15, 30, 30);
+    
+    // 預覽範圍
+    ctx.beginPath();
+    ctx.arc(mousePos.x, mousePos.y, 100 + playerStats.globalRange, 0, Math.PI*2);
+    ctx.fillStyle = overlap ? 'rgba(255,0,0,0.1)' : 'rgba(74, 144, 226, 0.2)';
+    ctx.fill();
+    ctx.strokeStyle = overlap ? 'red' : '#4a90e2';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    
+    ctx.globalAlpha = 1.0; // 恢復不透明
+}
+
 function openUpgradeMenu(tower, mouseX, mouseY) {
     selectedTower = tower;
     const cost = tower.level * 150;
     const sellPrice = Math.floor(tower.totalCost * 0.7);
+
+    document.getElementById('menu-title').innerText = `防禦塔 Lv.${tower.level}`;
     document.getElementById('menu-dmg').innerText = Math.floor(tower.getDamage());
     document.getElementById('menu-rng').innerText = Math.floor(tower.getRange());
     document.getElementById('menu-spd').innerText = tower.getAttacksPerSecond() + " 發/秒";
+
     const btnUpgrade = document.getElementById('btn-upgrade-action');
     btnUpgrade.innerText = `升級 (-$${cost})`;
     btnUpgrade.onclick = () => { if (gameState.money >= cost) { updateMoney(-cost); selectedTower.upgrade(); closeMenu(); } };
     btnUpgrade.disabled = gameState.money < cost;
+
     const btnSell = document.getElementById('btn-sell-action');
     btnSell.innerText = `出售 (+$${sellPrice})`;
-    upgradeMenu.style.left = (mouseX + 10) + 'px'; upgradeMenu.style.top = (mouseY - 80) + 'px'; upgradeMenu.style.display = 'flex';
+    
+    upgradeMenu.style.left = (mouseX + 10) + 'px'; 
+    upgradeMenu.style.top = (mouseY - 80) + 'px';
+    upgradeMenu.style.display = 'flex';
 }
 
 function sellSelectedTower() {
     if (!selectedTower) return;
-    const sellPrice = Math.floor(selectedTower.totalCost * 0.7);
-    updateMoney(sellPrice);
+    updateMoney(Math.floor(selectedTower.totalCost * 0.7));
     gameState.towers = gameState.towers.filter(t => t !== selectedTower);
     closeMenu();
 }
@@ -400,19 +427,14 @@ function showDraft() {
 
 function loop() {
     ctx.fillStyle = '#333'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-    // 繪製路徑
     ctx.strokeStyle = '#555'; ctx.lineWidth = 40; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.beginPath(); 
-    if (gamePath.length > 0) {
-        ctx.moveTo(gamePath[0].x, gamePath[0].y); 
-        for(let i=1;i<gamePath.length;i++) ctx.lineTo(gamePath[i].x,gamePath[i].y); 
-        ctx.stroke();
-    }
-
+    ctx.beginPath(); ctx.moveTo(path[0].x, path[0].y); for(let i=1;i<path.length;i++) ctx.lineTo(path[i].x,path[i].y); ctx.stroke();
     gameState.towers.forEach(t => { t.update(); t.draw(); });
     gameState.enemies.forEach(e => { e.update(); e.draw(); });
     gameState.projectiles.forEach(p => { p.update(); p.draw(); });
+    
+    // 繪製預覽 (在實體之後，UI之前)
+    drawBuildPreview();
 
     if(gameState.isWaveActive && gameState.enemies.length > 0 && !gameState.enemies.some(e=>e.active)) {
         if (!gameState.isEndingWave) { gameState.isEndingWave = true; setTimeout(endWave, 500); }

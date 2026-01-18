@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>Roguelike TD V15.0 - Sakiko & Sine Wave</title>
+    <title>Roguelike TD V16.0 - Safe Mode</title>
     <style>
         body { margin: 0; background: #222; color: #fff; font-family: 'Microsoft JhengHei', sans-serif; overflow: hidden; }
         #game-container { position: relative; display: flex; justify-content: center; margin-top: 20px; }
@@ -85,7 +85,7 @@
                 <div style="font-size:12px;color:#ccc">基礎塔</div>
                 <div class="hero-cost">$50</div>
             </div>
-            </div>
+        </div>
 
         <div id="draft-screen">
             <h2 id="draft-title">Loading...</h2>
@@ -100,7 +100,7 @@
 </div>
 
 <script>
-// --- 資料來源 ---
+// --- V16.0 修復與更新 ---
 const UPGRADE_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?output=csv';
 const ENEMY_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?gid=164420776&output=csv';
 const MAP_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?gid=1573121303&output=csv';
@@ -131,7 +131,9 @@ let mousePos = { x: -100, y: -100 };
 
 // --- CSV Parsers ---
 function parseCSV(text) {
+    if (!text) return [];
     const lines = text.trim().split('\n');
+    if (lines.length < 2) return [];
     const headers = lines[0].split(',').map(h => h.trim());
     const data = [];
     for (let i = 1; i < lines.length; i++) {
@@ -213,12 +215,21 @@ async function initGameData() {
         loadedEnemyTypes = mapEnemies(parseCSV(await eRes.text()));
         const rawMap = parseCSV(await mRes.text());
         path = mapPathData(rawMap);
+        
+        // 確保至少有一張卡，防止抽卡時崩潰
+        if (loadedUpgrades.length === 0) {
+            console.warn("Sheet 1 (Upgrade) is empty! Adding fallback.");
+            loadedUpgrades.push({ name: "基礎彈藥", desc: "傷害+1 (備用)", apply: () => playerStats.globalDamage += 1 });
+        }
+
         if (path.length < 2) throw new Error("Map Invalid");
         initHeroUI(); startGameUI();
     } catch (e) {
         console.error("Load Error:", e);
         path = [{x: 0, y: 100}, {x: 800, y: 100}];
         loadedEnemyTypes = [{ name: "預設怪", baseHp: 50, speed: 1.5, gold: 10, weight: 100 }];
+        // Fallback for upgrade failure
+        loadedUpgrades = [{ name: "緊急修復", desc: "數據載入失敗", apply: () => playerStats.globalDamage += 1 }];
         initHeroUI(); startGameUI();
     }
 }
@@ -263,9 +274,7 @@ const ctx = canvas.getContext('2d');
 let gameState = { 
     lives: 20, money: 300, wave: 1, 
     enemies: [], towers: [], projectiles: [], 
-    isWaveActive: false, 
-    isEndingWave: false,
-    spawnFinished: false // 🟢 修復Bug: 標記怪物是否生成完畢
+    isWaveActive: false, isEndingWave: false, spawnFinished: false 
 };
 let playerStats = { globalDamage: 0, globalRange: 0, globalFireRate: 60, goldMultiplier: 1.0, baseDamage: 15 };
 
@@ -381,7 +390,6 @@ class Tower {
             if (this.cooldown > 0) this.cooldown--;
             if (this.cooldown <= 0 && hasTarget) {
                 let vx = 0, vy = 0;
-                // 設定基礎發射向量
                 if (this.dir === 0) vx = 10;
                 if (this.dir === 1) vy = 10;
                 if (this.dir === 2) vx = -10;
@@ -446,61 +454,46 @@ class Tower {
         if (this.dir === 1) ctx.rotate(Math.PI / 2);
         if (this.dir === 2) ctx.rotate(Math.PI);
         if (this.dir === 3) ctx.rotate(-Math.PI / 2);
-        ctx.fillStyle = 'rgba(255, 215, 0, 0.3)'; ctx.fillRect(0, -width, range, width * 2); 
-        ctx.strokeStyle = '#ffd700'; ctx.strokeRect(0, -width, range, width * 2);
+        
+        ctx.fillStyle = 'rgba(255, 215, 0, 0.3)'; 
+        ctx.fillRect(0, -width, range, width * 2); 
+        
+        // 🟢 這裡修改了邊框粗度 (原本預設，現在改為 1 或 2)
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = '#ffd700'; 
+        ctx.strokeRect(0, -width, range, width * 2);
+        
         ctx.restore();
     }
 }
 
-// --- Projectile (Sine Wave Update) ---
 class Projectile {
     constructor(x, y, vx, vy, damage, isPenetrating) { 
-        this.startX = x; this.startY = y; // 記錄起點
+        this.startX = x; this.startY = y;
         this.vx = vx; this.vy = vy; 
         this.damage = damage; this.active = true; 
         this.isPenetrating = isPenetrating; this.hitList = [];
-        
-        this.speed = Math.hypot(vx, vy); // 計算總速度
-        // 正規化方向向量 (Normalized Vector)
-        this.normX = vx / this.speed;
-        this.normY = vy / this.speed;
-        
-        this.distanceTraveled = 0; // 已飛行距離
+        this.speed = Math.hypot(vx, vy); 
+        this.normX = vx / this.speed; this.normY = vy / this.speed;
+        this.distanceTraveled = 0; 
     }
     update() {
         if (!this.active) return;
-        
         this.distanceTraveled += this.speed;
-        
-        // 1. 計算直線位置 (Linear Position)
         let linearX = this.startX + this.normX * this.distanceTraveled;
         let linearY = this.startY + this.normY * this.distanceTraveled;
-        
-        // 2. 如果是穿透彈(泡泡)，加入正弦波偏移
         if (this.isPenetrating) {
-            // 計算垂直向量 (Perpendicular Vector) [-y, x]
-            let perpX = -this.normY;
-            let perpY = this.normX;
-            
-            // 正弦波公式：振幅 * sin(頻率 * 距離)
-            // 振幅 20px, 頻率 0.1
+            let perpX = -this.normY; let perpY = this.normX;
             let waveOffset = Math.sin(this.distanceTraveled * 0.1) * 20;
-            
-            this.x = linearX + perpX * waveOffset;
-            this.y = linearY + perpY * waveOffset;
+            this.x = linearX + perpX * waveOffset; this.y = linearY + perpY * waveOffset;
         } else {
-            // 普通子彈走直線
-            this.x = linearX;
-            this.y = linearY;
+            this.x = linearX; this.y = linearY;
         }
-
-        // 邊界檢查
         if (this.x < 0 || this.x > canvas.width || this.y < 0 || this.y > canvas.height) this.active = false;
         
         gameState.enemies.forEach(e => {
             if (!e.active) return;
             if (this.isPenetrating && this.hitList.includes(e)) return;
-            // 碰撞判定
             if (Math.hypot(e.x - this.x, e.y - this.y) < 25) { 
                 e.takeDamage(this.damage);
                 if (this.isPenetrating) this.hitList.push(e); else this.active = false;
@@ -520,7 +513,6 @@ class Projectile {
     }
 }
 
-// --- UI Logic ---
 let selectedTower = null; const upgradeMenu = document.getElementById('upgrade-menu');
 canvas.addEventListener('mousemove', (e) => { const rect = canvas.getBoundingClientRect(); mousePos.x = e.clientX - rect.left; mousePos.y = e.clientY - rect.top; });
 canvas.addEventListener('mousedown', (e) => {
@@ -547,7 +539,11 @@ function drawBuildPreview() {
         const range = selectedHeroConfig.stats.rng; const width = 40;
         ctx.fillStyle = overlap ? 'rgba(255,0,0,0.2)' : 'rgba(255, 215, 0, 0.3)';
         ctx.fillRect(mousePos.x, mousePos.y - width, range, width * 2);
-        ctx.strokeStyle = '#ffd700'; ctx.strokeRect(mousePos.x, mousePos.y - width, range, width * 2);
+        
+        // 🟢 預覽邊框也變細
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = '#ffd700'; 
+        ctx.strokeRect(mousePos.x, mousePos.y - width, range, width * 2);
     } else {
         const range = 100 + playerStats.globalRange;
         ctx.beginPath(); ctx.arc(mousePos.x, mousePos.y, range, 0, Math.PI*2);
@@ -565,11 +561,9 @@ function openUpgradeMenu(tower, mx, my) {
     document.getElementById('menu-dmg').innerText = Math.floor(tower.getDamage());
     document.getElementById('menu-rng').innerText = Math.floor(tower.getRange());
     document.getElementById('menu-blk').innerText = tower.isHero ? tower.blockCount : 0;
-    
     const btnUp = document.getElementById('btn-upgrade-action');
     btnUp.innerText = `升級 (-$${cost})`;
     btnUp.onclick = () => { if (gameState.money >= cost) { updateMoney(-cost); selectedTower.upgrade(); closeMenu(); } };
-    
     const btnRot = document.getElementById('btn-rotate-action');
     if (tower.isHero) {
         btnRot.style.display = 'block';
@@ -577,7 +571,6 @@ function openUpgradeMenu(tower, mx, my) {
         btnRot.innerText = `🔄 旋轉 (${dirs[tower.dir]})`;
         btnRot.onclick = rotateSelectedTower;
     } else btnRot.style.display = 'none';
-    
     const btnSell = document.getElementById('btn-sell-action');
     btnSell.innerText = `出售 (+$${sellPrice})`;
     upgradeMenu.style.left = (mx + 10) + 'px'; upgradeMenu.style.top = (my - 120) + 'px'; upgradeMenu.style.display = 'flex';
@@ -604,13 +597,10 @@ function closeMenu() { selectedTower = null; upgradeMenu.style.display = 'none';
 function updateMoney(v) { gameState.money += v; document.getElementById('money').innerText = gameState.money; }
 function updateLives(v) { gameState.lives += v; document.getElementById('lives').innerText = gameState.lives; if(gameState.lives<=0) { alert("Game Over"); location.reload(); } }
 
-// --- Wave Logic (修復卡頓Bug) ---
+// --- Draft & Wave ---
 function startWave() {
     if (gameState.isWaveActive) return;
-    gameState.isWaveActive = true; 
-    gameState.isEndingWave = false; 
-    gameState.spawnFinished = false; // 重置生成狀態
-    
+    gameState.isWaveActive = true; gameState.isEndingWave = false; gameState.spawnFinished = false;
     document.getElementById('start-wave-btn').style.display = 'none'; closeMenu();
     let max = 5 + (gameState.wave * 3); 
     let interval = Math.max(200, 800 - (gameState.wave * 20));
@@ -620,15 +610,27 @@ function startWave() {
         if(!gameState.isWaveActive) { clearInterval(spawner); return; }
         try { gameState.enemies.push(new Enemy(gameState.wave)); } catch(e) {}
         count++; 
-        if(count >= max) {
-            clearInterval(spawner);
-            gameState.spawnFinished = true; // 🟢 標記生成完畢
-        }
+        if(count >= max) { clearInterval(spawner); gameState.spawnFinished = true; }
     }, interval);
 }
 function endWave() {
     gameState.isWaveActive = false; gameState.enemies = []; gameState.projectiles = [];
     gameState.wave++; document.getElementById('wave').innerText = gameState.wave;
+    showDraft();
+}
+function showDraft() {
+    const box = document.getElementById('cards-container'); box.innerHTML = '';
+    // 🟢 安全氣囊：確保 pool 絕對不為空
+    const pool = (loadedUpgrades && loadedUpgrades.length > 0) ? loadedUpgrades : 
+                 [{name: "備用彈藥", desc: "強化卡讀取失敗，獲得基礎傷害", apply:()=>{playerStats.globalDamage+=1}}];
+    
+    for(let i=0; i<3; i++) {
+        const u = pool[Math.floor(Math.random()*pool.length)];
+        const d = document.createElement('div'); d.className='card';
+        d.innerHTML = `<h3 style="color:#00bcd4">${u.name}</h3><p style="color:#ccc">${u.desc}</p>`;
+        d.onclick = () => { u.apply(); document.getElementById('draft-screen').style.display='none'; document.getElementById('start-wave-btn').style.display='inline-block'; };
+        box.appendChild(d);
+    }
     document.getElementById('draft-screen').style.display = 'flex';
 }
 function loop() {
@@ -644,13 +646,8 @@ function loop() {
     gameState.projectiles.forEach(p => { p.update(); p.draw(); });
     drawBuildPreview();
     
-    // 🟢 修復後的波次檢查邏輯
-    // 條件：波次進行中 && 怪物已全部生成 && 場上沒有活著的怪物
     if(gameState.isWaveActive && gameState.spawnFinished && !gameState.enemies.some(e=>e.active)) {
-        if (!gameState.isEndingWave) { 
-            gameState.isEndingWave = true; 
-            setTimeout(endWave, 500); 
-        }
+        if (!gameState.isEndingWave) { gameState.isEndingWave = true; setTimeout(endWave, 500); }
     }
     requestAnimationFrame(loop);
 }

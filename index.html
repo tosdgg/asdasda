@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>Roguelike TD V13.0 - Directional Combat</title>
+    <title>Roguelike TD V14.0 - Map Loader</title>
     <style>
         body { margin: 0; background: #222; color: #fff; font-family: 'Microsoft JhengHei', sans-serif; overflow: hidden; }
         #game-container { position: relative; display: flex; justify-content: center; margin-top: 20px; }
@@ -33,14 +33,17 @@
             display: flex; gap: 10px; pointer-events: auto; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 10px;
         }
         .hero-btn {
-            width: 60px; height: 60px; border: 2px solid #555; border-radius: 8px; background: #333;
+            width: 70px; height: 70px; border: 2px solid #555; border-radius: 8px; background: #333;
             cursor: pointer; position: relative; overflow: hidden; transition: 0.2s;
             display: flex; align-items: center; justify-content: center;
         }
         .hero-btn:hover { border-color: #ffd700; transform: translateY(-5px); }
         .hero-btn.active { border-color: #00ff00; box-shadow: 0 0 10px #00ff00; }
         .hero-btn.disabled { filter: grayscale(100%); cursor: not-allowed; opacity: 0.5; }
-        .hero-btn img { width: 100%; height: 100%; object-fit: contain; }
+        
+        /* 讓按鈕內的影片填滿 */
+        .hero-btn video { width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+        
         .hero-cost { position: absolute; bottom: 0; right: 0; background: rgba(0,0,0,0.8); color: #ffd700; font-size: 10px; padding: 2px 4px; }
         .hero-limit { position: absolute; top: 0; left: 0; background: rgba(255,0,0,0.8); color: #fff; font-size: 10px; padding: 2px 4px; display: none; }
         .hero-btn.disabled .hero-limit { display: block; }
@@ -85,10 +88,10 @@
                 <div style="font-size:12px;color:#ccc">基礎塔</div>
                 <div class="hero-cost">$50</div>
             </div>
-        </div>
+            </div>
 
         <div id="draft-screen">
-            <h2 id="draft-title">Loading...</h2>
+            <h2 id="draft-title">Loading Maps & Data...</h2>
             <div class="cards-container" id="cards-container"></div>
         </div>
 
@@ -100,28 +103,29 @@
 </div>
 
 <script>
+// --- 1. 資料來源設定 (更新的 GID) ---
 const UPGRADE_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?output=csv';
-const ENEMY_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?gid=754158994&output=csv';
 
-// --- V13.0 英雄配置 (4向 Webm) ---
+// Sheet 2: 敵人 (gid=164420776)
+const ENEMY_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?gid=164420776&output=csv';
+
+// Sheet 3: 地圖 (gid=1573121303)
+const MAP_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?gid=1573121303&output=csv';
+
+// 英雄配置
 const HERO_CONFIG = [
     {
         id: 'hero_bubble',
         name: '泡泡龍',
         cost: 150,
-        // icon 使用靜態圖 (這裡暫用正面Idle截圖)
-        icon: 'https://cdn.discordapp.com/attachments/795309314352087045/1462581270524461188/---Idle-x1.webm?ex=696eb674&is=696d64f4&hm=fb69f07b3d9c68ba46b8102a170e992a771dd54a70833aa8117228036b1d891c&', 
-        
+        // icon: 自動使用下方的 front_idle 作為按鈕動畫
         anim: {
-            // 正面 (用於 右, 下, 左)
             front_idle: 'https://cdn.discordapp.com/attachments/795309314352087045/1462581270524461188/---Idle-x1.webm?ex=696eb674&is=696d64f4&hm=fb69f07b3d9c68ba46b8102a170e992a771dd54a70833aa8117228036b1d891c&',
             front_attack: 'https://cdn.discordapp.com/attachments/795309314352087045/1462581981060530327/---Skill_2_Idle_A-x1.webm?ex=696eb71d&is=696d659d&hm=885403ba7659a04fc3c4a602373fd0ffccd65497e13b61803fd4ffb24e026319&',
-            
-            // 背面 (用於 上)
             back_idle: 'https://cdn.discordapp.com/attachments/795309314352087045/1462582587183857891/---Idle-x1.webm?ex=696eb7ae&is=696d662e&hm=5e2d3dce41f037c1120cf2d0d4297e7e0682255dfb6b2e9b3dd010817d10feae&',
             back_attack: 'https://cdn.discordapp.com/attachments/795309314352087045/1462582587758481560/---Skill_2_Idle_A-x1.webm?ex=696eb7ae&is=696d662e&hm=fb6e88670ed1c10bf572204992d6b1598d7d4eb4d707563cec2d95c919e8df4f&'
         },
-        stats: { dmg: 20, rng: 200, spd: 30, block: 2 }, // rng 200 是長度
+        stats: { dmg: 20, rng: 200, spd: 30, block: 2 },
         scale: { dmg: 10, rng: 10 },
         placed: false
     }
@@ -130,10 +134,11 @@ const HERO_CONFIG = [
 let buildMode = 'BASIC';
 let selectedHeroConfig = null;
 let loadedUpgrades = [], loadedEnemyTypes = [];
+let path = []; // 地圖路徑現在是變數，等待 CSV 載入
 let specialStats = { slowFactor: 0, splashRadius: 0 };
 let mousePos = { x: -100, y: -100 };
 
-// --- 數據解析 (保持不變) ---
+// --- CSV 解析器 ---
 function parseCSV(text) {
     const lines = text.trim().split('\n');
     const headers = lines[0].split(',').map(h => h.trim());
@@ -147,6 +152,8 @@ function parseCSV(text) {
     }
     return data;
 }
+
+// 詞條解析 (新版)
 function applyTags(tagString) {
     if (!tagString) return;
     const regex = /#([a-zA-Z]+)([-]?\d+(\.\d+)?)/g;
@@ -165,9 +172,11 @@ function applyTags(tagString) {
         }
     }
 }
+
 function mapUpgrades(data) {
     return data.map(item => {
         const tags = item['tags'] || item['Tags'];
+        // 兼容舊格式
         const type = (item['type'] || item['Type'] || '').toUpperCase();
         const val = parseFloat(item['value'] || item['Value'] || 0);
         return {
@@ -177,12 +186,14 @@ function mapUpgrades(data) {
                 else if (type) {
                     let t = "";
                     if(type==='DMG') t=`#dmg${val}`; else if(type==='RNG') t=`#rng${val}`;
+                    else if(type==='SPD') t=`#spd${val}`;
                     applyTags(t);
                 }
             }
         };
     });
 }
+
 function mapEnemies(data) {
     return data.filter(item => item['name']).map(item => ({
         name: item['name'],
@@ -190,6 +201,16 @@ function mapEnemies(data) {
         gold: parseFloat(item['gold']||15)||15, weight: parseFloat(item['weight']||10)||10
     }));
 }
+
+// 地圖解析器 (New!)
+function mapPathData(data) {
+    // 假設 CSV 欄位是 x, y
+    return data.map(p => ({
+        x: parseInt(p.x || p.X || 0),
+        y: parseInt(p.y || p.Y || 0)
+    })).filter(p => !isNaN(p.x) && !isNaN(p.y)); // 過濾無效點
+}
+
 function getRandomEnemyType() {
     if (!loadedEnemyTypes.length) return { name: "BUG", baseHp: 50, speed: 1, gold: 10, weight: 1 };
     const totalWeight = loadedEnemyTypes.reduce((sum, type) => sum + type.weight, 0);
@@ -203,13 +224,33 @@ function getRandomEnemyType() {
 
 async function initGameData() {
     try {
-        const [uRes, eRes] = await Promise.all([fetch(UPGRADE_CSV_URL), fetch(ENEMY_CSV_URL)]);
+        // 同時讀取 3 個 CSV
+        const [uRes, eRes, mRes] = await Promise.all([
+            fetch(UPGRADE_CSV_URL), 
+            fetch(ENEMY_CSV_URL),
+            fetch(MAP_CSV_URL)
+        ]);
+
         loadedUpgrades = mapUpgrades(parseCSV(await uRes.text()));
         loadedEnemyTypes = mapEnemies(parseCSV(await eRes.text()));
-        initHeroUI(); startGameUI();
+        
+        // 載入地圖
+        const rawMap = parseCSV(await mRes.text());
+        path = mapPathData(rawMap);
+        
+        // 如果地圖讀取失敗，使用預設值
+        if (path.length < 2) throw new Error("Map data invalid");
+
+        console.log("Map Loaded:", path.length, "points");
+        initHeroUI(); 
+        startGameUI();
     } catch (e) {
+        console.error("Data Load Error:", e);
+        // Fallback
+        path = [{x: 0, y: 100}, {x: 800, y: 100}];
         loadedEnemyTypes = [{ name: "預設怪", baseHp: 50, speed: 1.5, gold: 10, weight: 100 }];
-        initHeroUI(); startGameUI();
+        initHeroUI(); 
+        startGameUI();
     }
 }
 
@@ -220,12 +261,13 @@ function initHeroUI() {
         btn.className = 'hero-btn';
         btn.id = `btn-${hero.id}`;
         btn.onclick = () => selectBuildMode(hero.id);
-        // 如果 icon 是 webm，用 video 標籤顯示預覽
-        if(hero.icon.endsWith('.webm')) {
-            btn.innerHTML = `<video src="${hero.icon}" autoplay loop muted style="width:100%;height:100%;object-fit:contain;"></video><div class="hero-cost">$${hero.cost}</div><div class="hero-limit">已放置</div>`;
-        } else {
-            btn.innerHTML = `<img src="${hero.icon}"><div class="hero-cost">$${hero.cost}</div><div class="hero-limit">已放置</div>`;
-        }
+        
+        // 使用 Front Idle 動畫作為按鈕頭像
+        btn.innerHTML = `
+            <video src="${hero.anim.front_idle}" autoplay loop muted></video>
+            <div class="hero-cost">$${hero.cost}</div>
+            <div class="hero-limit">已放置</div>
+        `;
         bar.appendChild(btn);
     });
 }
@@ -248,18 +290,23 @@ function startGameUI() {
     document.getElementById('start-wave-btn').style.display = 'inline-block';
 }
 
-// --- 3. 遊戲核心 ---
+// --- 遊戲核心 ---
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 let gameState = { lives: 20, money: 300, wave: 1, enemies: [], towers: [], projectiles: [], isWaveActive: false, isEndingWave: false };
 let playerStats = { globalDamage: 0, globalRange: 0, globalFireRate: 60, goldMultiplier: 1.0, baseDamage: 15 };
-const path = [{x: 0, y: 100}, {x: 150, y: 100}, {x: 150, y: 500}, {x: 300, y: 500}, {x: 300, y: 100}, {x: 450, y: 100}, {x: 450, y: 500}, {x: 600, y: 500}, {x: 600, y: 100}, {x: 800, y: 100}];
 
 class Enemy {
     constructor(wave) {
         const type = getRandomEnemyType();
         this.name = type.name; this.goldReward = type.gold;
-        this.pathIndex = 0; this.x = path[0].x; this.y = path[0].y;
+        this.pathIndex = 0; 
+        // 確保地圖已載入
+        if (path.length > 0) {
+            this.x = path[0].x; this.y = path[0].y;
+        } else {
+            this.x = 0; this.y = 0;
+        }
         this.baseSpeed = type.speed; this.currentSpeed = this.baseSpeed;
         const scaleMultiplier = Math.pow(1.2, wave - 1);
         this.hp = Math.floor(type.baseHp * scaleMultiplier);
@@ -271,7 +318,7 @@ class Enemy {
         if (!this.active) return;
         if (this.blockedBy) {
             if (!this.blockedBy.active) this.blockedBy = null;
-            else return; // 被阻擋，停止移動
+            else return;
         }
         let target = path[this.pathIndex + 1];
         if (!target) { this.active = false; updateLives(-1); return; }
@@ -312,7 +359,6 @@ class Tower {
             this.totalCost = heroConfig.cost;
             this.name = heroConfig.name;
             
-            // 載入 4 個 Webm (全部循環播放，透過 JS 控制暫停/播放)
             this.media = {
                 front_idle: this.createVideo(heroConfig.anim.front_idle),
                 front_attack: this.createVideo(heroConfig.anim.front_attack),
@@ -320,8 +366,8 @@ class Tower {
                 back_attack: this.createVideo(heroConfig.anim.back_attack),
             };
 
-            this.dir = 0; // 0:右, 1:下, 2:左, 3:上
-            this.isAttacking = false; // 是否正在攻擊
+            this.dir = 0; 
+            this.isAttacking = false; 
             this.blockedEnemies = [];
 
         } else {
@@ -334,7 +380,7 @@ class Tower {
 
     createVideo(src) {
         const v = document.createElement('video');
-        v.src = src; v.muted = true; v.loop = true; // 全部無限循環
+        v.src = src; v.muted = true; v.loop = true; 
         v.autoplay = false; v.playsInline = true;
         return v;
     }
@@ -351,12 +397,9 @@ class Tower {
 
     releaseBlock(enemy) { this.blockedEnemies = this.blockedEnemies.filter(e => e !== enemy); }
     
-    // 檢查敵人是否在矩形攻擊範圍內
     isInRectRange(e, range, width) {
         const dx = e.x - this.x;
         const dy = e.y - this.y;
-        
-        // 0:右, 1:下, 2:左, 3:上
         if (this.dir === 0) return dx > 0 && dx < range && Math.abs(dy) < width;
         if (this.dir === 1) return dy > 0 && dy < range && Math.abs(dx) < width;
         if (this.dir === 2) return dx < 0 && dx > -range && Math.abs(dy) < width;
@@ -366,7 +409,6 @@ class Tower {
 
     update() {
         if (this.isHero) {
-            // 1. 阻擋邏輯 (保持 40px 近身阻擋)
             if (this.blockedEnemies.length < this.blockCount) {
                 gameState.enemies.forEach(e => {
                     if (e.active && !e.blockedBy && this.blockedEnemies.length < this.blockCount) {
@@ -378,38 +420,30 @@ class Tower {
                 });
             }
 
-            // 2. 索敵與狀態切換
             let hasTarget = false;
             const range = this.getRange();
-            const width = 40; // 矩形寬度的一半
-
-            // 尋找攻擊範圍內的敵人
+            const width = 40; 
             gameState.enemies.forEach(e => {
                 if (e.active && this.isInRectRange(e, range, width)) {
                     hasTarget = true;
                 }
             });
 
-            // 狀態切換：有敵人就播攻擊動畫，沒敵人播閒置
             this.isAttacking = hasTarget;
             this.updateVideoState();
 
-            // 3. 發射子彈 (獨立於動畫，按攻速發射)
             if (this.cooldown > 0) this.cooldown--;
             if (this.cooldown <= 0 && hasTarget) {
-                // 發射方向
                 let vx = 0, vy = 0;
                 if (this.dir === 0) vx = 10;
                 if (this.dir === 1) vy = 10;
                 if (this.dir === 2) vx = -10;
                 if (this.dir === 3) vy = -10;
-
                 gameState.projectiles.push(new Projectile(this.x, this.y, vx, vy, this.getDamage(), true));
                 this.cooldown = this.getFireRate();
             }
 
         } else {
-            // 基礎塔邏輯
             if (this.cooldown > 0) this.cooldown--;
             if (this.cooldown <= 0) {
                 let target = null, minDist = Infinity, range = this.getRange();
@@ -429,18 +463,14 @@ class Tower {
         }
     }
     
-    // 管理影片播放/暫停，節省效能
     updateVideoState() {
-        // 先暫停所有
         Object.values(this.media).forEach(v => v.pause());
-
         let activeVideo = null;
-        if (this.dir === 3) { // 上 (背面)
+        if (this.dir === 3) { 
             activeVideo = this.isAttacking ? this.media.back_attack : this.media.back_idle;
-        } else { // 右, 下, 左 (正面)
+        } else { 
             activeVideo = this.isAttacking ? this.media.front_attack : this.media.front_idle;
         }
-        
         if (activeVideo) activeVideo.play();
     }
 
@@ -455,13 +485,13 @@ class Tower {
 
             ctx.save(); 
             ctx.translate(this.x, this.y); 
-            
-            // 左邊 (dir=2) 需要翻轉
             if (this.dir === 2) ctx.scale(-1, 1);
             
-            // 繪製影片 (稍微往上偏移，因為腳在座標點)
+            // 繪製影片: 放大尺寸 (150x150)
             if (activeVideo && activeVideo.readyState >= 2) {
-                ctx.drawImage(activeVideo, -50, -80, 100, 100);
+                // 原本是 -50, -80, 100, 100
+                // 現在放大到 150x150, 偏移量也要調整 (約 -75, -110)
+                ctx.drawImage(activeVideo, -75, -110, 150, 150);
             }
             ctx.restore(); 
             
@@ -470,7 +500,6 @@ class Tower {
             ctx.fillStyle = '#f1c40f';
             ctx.fillText(`🛡️ ${this.blockedEnemies.length}/${this.blockCount}`, this.x, this.y + 10);
             
-            // 繪製攻擊範圍預覽 (如果被選中)
             if (selectedTower === this) {
                 this.drawRangeRect(this.getRange(), 40);
             }
@@ -490,17 +519,13 @@ class Tower {
     drawRangeRect(range, width) {
         ctx.save();
         ctx.translate(this.x, this.y);
-        // 旋轉畫布來畫矩形
-        if (this.dir === 1) ctx.rotate(Math.PI / 2);   // 下
-        if (this.dir === 2) ctx.rotate(Math.PI);       // 左
-        if (this.dir === 3) ctx.rotate(-Math.PI / 2);  // 上
-        
-        // 繪製矩形 (黃色半透明)
+        if (this.dir === 1) ctx.rotate(Math.PI / 2);
+        if (this.dir === 2) ctx.rotate(Math.PI);
+        if (this.dir === 3) ctx.rotate(-Math.PI / 2);
         ctx.fillStyle = 'rgba(255, 215, 0, 0.3)';
-        ctx.fillRect(0, -width, range, width * 2); // 向右畫
+        ctx.fillRect(0, -width, range, width * 2); 
         ctx.strokeStyle = '#ffd700';
         ctx.strokeRect(0, -width, range, width * 2);
-        
         ctx.restore();
     }
 }
@@ -519,7 +544,7 @@ class Projectile {
         gameState.enemies.forEach(e => {
             if (!e.active) return;
             if (this.isPenetrating && this.hitList.includes(e)) return;
-            if (Math.hypot(e.x - this.x, e.y - this.y) < 25) { // 稍微加大判定
+            if (Math.hypot(e.x - this.x, e.y - this.y) < 25) { 
                 e.takeDamage(this.damage);
                 if (this.isPenetrating) this.hitList.push(e); else this.active = false;
             }
@@ -556,22 +581,17 @@ canvas.addEventListener('mousedown', (e) => {
     }
 });
 
-// V13.0 更新預覽功能 (支援矩形)
 function drawBuildPreview() {
     if (selectedTower) return;
     const overlap = gameState.towers.some(t => Math.hypot(t.x - mousePos.x, t.y - mousePos.y) < 30);
-    
     ctx.globalAlpha = 0.5;
-    // 預覽範圍
     if (buildMode !== 'BASIC' && selectedHeroConfig) {
-        // 英雄: 預設向右的矩形
         const range = selectedHeroConfig.stats.rng;
         const width = 40;
         ctx.fillStyle = overlap ? 'rgba(255,0,0,0.2)' : 'rgba(255, 215, 0, 0.3)';
         ctx.fillRect(mousePos.x, mousePos.y - width, range, width * 2);
         ctx.strokeStyle = '#ffd700'; ctx.strokeRect(mousePos.x, mousePos.y - width, range, width * 2);
     } else {
-        // 基礎塔: 圓形
         const range = 100 + playerStats.globalRange;
         ctx.beginPath(); ctx.arc(mousePos.x, mousePos.y, range, 0, Math.PI*2);
         ctx.fillStyle = overlap ? 'rgba(255,0,0,0.2)' : 'rgba(74, 144, 226, 0.2)'; ctx.fill();
@@ -588,12 +608,9 @@ function openUpgradeMenu(tower, mx, my) {
     document.getElementById('menu-dmg').innerText = Math.floor(tower.getDamage());
     document.getElementById('menu-rng').innerText = Math.floor(tower.getRange());
     document.getElementById('menu-blk').innerText = tower.isHero ? tower.blockCount : 0;
-    
     const btnUp = document.getElementById('btn-upgrade-action');
     btnUp.innerText = `升級 (-$${cost})`;
     btnUp.onclick = () => { if (gameState.money >= cost) { updateMoney(-cost); selectedTower.upgrade(); closeMenu(); } };
-    
-    // 旋轉按鈕文字動態變化
     const btnRot = document.getElementById('btn-rotate-action');
     if (tower.isHero) {
         btnRot.style.display = 'block';
@@ -601,21 +618,17 @@ function openUpgradeMenu(tower, mx, my) {
         btnRot.innerText = `🔄 旋轉 (${dirs[tower.dir]})`;
         btnRot.onclick = rotateSelectedTower;
     } else btnRot.style.display = 'none';
-    
     const btnSell = document.getElementById('btn-sell-action');
     btnSell.innerText = `出售 (+$${sellPrice})`;
     upgradeMenu.style.left = (mx + 10) + 'px'; upgradeMenu.style.top = (my - 120) + 'px'; upgradeMenu.style.display = 'flex';
 }
-
 function rotateSelectedTower() {
     if (selectedTower && selectedTower.isHero) {
-        selectedTower.dir = (selectedTower.dir + 1) % 4; // 0->1->2->3->0
-        // 更新按鈕文字
+        selectedTower.dir = (selectedTower.dir + 1) % 4;
         const dirs = ['右', '下', '左', '上'];
         document.getElementById('btn-rotate-action').innerText = `🔄 旋轉 (${dirs[selectedTower.dir]})`;
     }
 }
-
 function sellSelectedTower() {
     if (!selectedTower) return;
     updateMoney(Math.floor(selectedTower.totalCost * 0.7));
@@ -651,8 +664,15 @@ function endWave() {
 }
 function loop() {
     ctx.fillStyle = '#333'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = '#555'; ctx.lineWidth = 40; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.beginPath(); ctx.moveTo(path[0].x, path[0].y); for(let i=1;i<path.length;i++) ctx.lineTo(path[i].x,path[i].y); ctx.stroke();
+    
+    // 繪製地圖路徑 (如果有的話)
+    if (path.length > 0) {
+        ctx.strokeStyle = '#555'; ctx.lineWidth = 40; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.beginPath(); ctx.moveTo(path[0].x, path[0].y); 
+        for(let i=1;i<path.length;i++) ctx.lineTo(path[i].x,path[i].y); 
+        ctx.stroke();
+    }
+
     gameState.towers.forEach(t => { t.update(); t.draw(); });
     gameState.enemies.forEach(e => { e.update(); e.draw(); });
     gameState.projectiles.forEach(p => { p.update(); p.draw(); });

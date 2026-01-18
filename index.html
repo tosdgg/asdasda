@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>Roguelike TD V5.0 - Gold & Weights</title>
+    <title>Roguelike TD V6.0 - Horde Mode</title>
     <style>
         body { margin: 0; background: #222; color: #fff; font-family: 'Microsoft JhengHei', sans-serif; overflow: hidden; }
         #game-container { position: relative; display: flex; justify-content: center; margin-top: 20px; }
@@ -46,7 +46,7 @@
             <div>❤️ 生命: <span id="lives">20</span></div>
             <div>💰 金幣: <span id="money">200</span></div>
             <div>🌊 波數: <span id="wave">1</span></div>
-            <div style="font-size: 14px; color: #aaa; margin-top: 5px;">敵人血量倍率: <span id="hp-scale">1.0x</span></div>
+            <div style="font-size: 14px; color: #aaa; margin-top: 5px;">敵人數量: <span id="enemy-count">0</span></div>
         </div>
 
         <div id="upgrade-menu">
@@ -64,23 +64,22 @@
 
         <div id="controls">
             <p>點擊空地建造 ($50) | 點擊防禦塔升級</p>
-            <button class="start-btn" id="start-wave-btn" onclick="startWave()">下一波</button>
+            <button class="start-btn" id="start-wave-btn" onclick="startWave()">下一波 (Next Wave)</button>
         </div>
     </div>
 </div>
 
 <script>
-// --- 1. 配置 (請修改這裡的 URL) ---
+// --- 1. 配置 ---
 const UPGRADE_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?output=csv';
-
-// ⚠️ 請確保這裡使用的是 Sheet 2 (敵人) 的 gid
+// ⚠️ 確保這裡是你 Sheet 2 (敵人) 的 URL
 const ENEMY_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?gid=754158994&output=csv';
 
 let loadedUpgrades = [];
 let loadedEnemyTypes = [];
 let specialStats = { slowFactor: 0, splashRadius: 0 };
 
-// --- 2. 數據解析與權重邏輯 ---
+// --- 2. 數據解析與容錯邏輯 ---
 
 function parseCSV(text) {
     const lines = text.trim().split('\n');
@@ -97,13 +96,13 @@ function parseCSV(text) {
 }
 
 function mapEnemies(data) {
-    return data.filter(item => item['name'] && item['hp']).map(item => ({
+    // 安全過濾：確保有 name，且數值為有效數字 (如果是 NaN 則給預設值)
+    return data.filter(item => item['name']).map(item => ({
         name: item['name'],
-        baseHp: parseFloat(item['hp'] || 50),
-        speed: parseFloat(item['speed'] || 1.5),
-        // 新增：解析 D 行和 E 行
-        gold: parseFloat(item['gold'] || item['drop'] || 15), // 預設掉落 15
-        weight: parseFloat(item['weight'] || item['chance'] || 10) // 預設權重 10
+        baseHp: parseFloat(item['hp'] || item['Hp'] || 50) || 50,
+        speed: parseFloat(item['speed'] || item['Speed'] || 1.5) || 1.5,
+        gold: parseFloat(item['gold'] || item['Gold'] || 15) || 15,
+        weight: parseFloat(item['weight'] || item['Weight'] || 10) || 10
     }));
 }
 
@@ -128,19 +127,24 @@ function mapUpgrades(data) {
     });
 }
 
-// 權重隨機算法 (Weighted Random)
+// 修復：更安全的隨機選取
 function getRandomEnemyType() {
-    if (loadedEnemyTypes.length === 0) return null;
+    if (!loadedEnemyTypes || loadedEnemyTypes.length === 0) {
+        // ❌ 如果真的沒數據，回傳一個保底怪，避免遊戲崩潰
+        return { name: "BUG史萊姆", baseHp: 50, speed: 1.0, gold: 10, weight: 1 };
+    }
     
-    // 計算總權重
     const totalWeight = loadedEnemyTypes.reduce((sum, type) => sum + type.weight, 0);
-    let random = Math.random() * totalWeight;
     
+    // 如果總權重是 0 (例如使用者忘記填權重)，隨機選一個
+    if (totalWeight <= 0) return loadedEnemyTypes[Math.floor(Math.random() * loadedEnemyTypes.length)];
+
+    let random = Math.random() * totalWeight;
     for (const type of loadedEnemyTypes) {
         if (random < type.weight) return type;
         random -= type.weight;
     }
-    return loadedEnemyTypes[0]; // 防止誤差
+    return loadedEnemyTypes[0];
 }
 
 async function initGameData() {
@@ -148,12 +152,17 @@ async function initGameData() {
         const [uRes, eRes] = await Promise.all([fetch(UPGRADE_CSV_URL), fetch(ENEMY_CSV_URL)]);
         loadedUpgrades = mapUpgrades(parseCSV(await uRes.text()));
         loadedEnemyTypes = mapEnemies(parseCSV(await eRes.text()));
-        console.log("敵人列表:", loadedEnemyTypes);
+        
+        console.log("✅ 敵人載入成功:", loadedEnemyTypes.length, "種");
+        
+        if(loadedEnemyTypes.length === 0) throw new Error("CSV是空的");
+        
         startGameUI();
     } catch (e) {
-        console.warn("載入失敗，使用備用數據", e);
+        console.error("❌ 載入失敗:", e);
+        // 保底數據
         loadedEnemyTypes = [{ name: "預設怪", baseHp: 50, speed: 1.5, gold: 10, weight: 100 }];
-        loadedUpgrades = [{ name: "測試", desc: "傷害+5", apply:()=>playerStats.globalDamage+=5 }];
+        loadedUpgrades = [{ name: "測試卡", desc: "傷害+5", apply:()=>playerStats.globalDamage+=5 }];
         startGameUI();
     }
 }
@@ -173,16 +182,16 @@ const path = [{x: 0, y: 100}, {x: 200, y: 100}, {x: 200, y: 400}, {x: 600, y: 40
 
 class Enemy {
     constructor(wave) {
-        // 使用權重算法選擇敵人
-        const type = getRandomEnemyType();
+        const type = getRandomEnemyType(); // 使用修復後的選取邏輯
         
         this.name = type.name;
-        this.goldReward = type.gold; // 儲存該敵人的掉落金幣
+        this.goldReward = type.gold;
         this.pathIndex = 0;
         this.x = path[0].x; this.y = path[0].y;
         this.baseSpeed = type.speed;
         this.currentSpeed = this.baseSpeed;
         
+        // 血量成長：基礎 1.2 倍指數成長
         const scaleMultiplier = Math.pow(1.2, wave - 1);
         this.hp = Math.floor(type.baseHp * scaleMultiplier);
         this.maxHp = this.hp;
@@ -207,7 +216,6 @@ class Enemy {
         this.hp -= dmg;
         if (this.hp <= 0 && this.active) {
             this.active = false;
-            // 計算掉落金幣：敵人基礎金幣 * 玩家貪婪倍率
             updateMoney(Math.floor(this.goldReward * playerStats.goldMultiplier));
         }
     }
@@ -219,7 +227,6 @@ class Enemy {
         ctx.strokeStyle = "black"; ctx.lineWidth = 3;
         ctx.strokeText(this.name, this.x, this.y);
         ctx.fillText(this.name, this.x, this.y);
-        
         const barY = this.y - 15;
         ctx.fillStyle = "red"; ctx.fillRect(this.x-20, barY, 40, 4);
         ctx.fillStyle = "#00ff00"; ctx.fillRect(this.x-20, barY, 40 * (this.hp/this.maxHp), 4);
@@ -307,17 +314,41 @@ function updateLives(v) { gameState.lives += v; document.getElementById('lives')
 function startWave() {
     if (gameState.isWaveActive) return;
     gameState.isWaveActive = true; document.getElementById('start-wave-btn').style.display = 'none'; closeMenu();
-    let count = 0, max = 5 + Math.floor(gameState.wave * 1.5);
+    
+    // --- 敵人生成邏輯 (Horde Update) ---
+    
+    // 1. 數量公式：每波增加 3 隻
+    // Wave 1: 5 + 3 = 8
+    // Wave 10: 5 + 30 = 35
+    let max = 5 + (gameState.wave * 3); 
+    
+    // 2. 出怪間隔 (Interval)：每波減少 20ms，最快 200ms (一秒5隻)
+    // Wave 1: 800ms
+    // Wave 10: 600ms
+    // Wave 30: 200ms (極速)
+    let interval = Math.max(200, 800 - (gameState.wave * 20));
+
+    // 更新 UI 顯示預計敵人數量
+    document.getElementById('enemy-count').innerText = max;
+
+    let count = 0;
     const spawner = setInterval(() => {
         if(!gameState.isWaveActive) { clearInterval(spawner); return; }
-        gameState.enemies.push(new Enemy(gameState.wave));
-        count++; if(count >= max) clearInterval(spawner);
-    }, 800);
+        
+        try {
+            gameState.enemies.push(new Enemy(gameState.wave));
+        } catch(e) {
+            console.error("生成敵人失敗", e);
+        }
+        
+        count++; 
+        if(count >= max) clearInterval(spawner);
+    }, interval);
 }
+
 function endWave() {
     gameState.isWaveActive = false; gameState.enemies = []; gameState.projectiles = [];
     gameState.wave++; document.getElementById('wave').innerText = gameState.wave;
-    document.getElementById('hp-scale').innerText = Math.pow(1.2, gameState.wave - 1).toFixed(1) + "x";
     showDraft();
 }
 function showDraft() {

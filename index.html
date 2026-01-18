@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>Roguelike TD V9.0 - Tags & Preview</title>
+    <title>Roguelike TD V11.0 - Blocker Hero</title>
     <style>
         body { margin: 0; background: #222; color: #fff; font-family: 'Microsoft JhengHei', sans-serif; overflow: hidden; }
         #game-container { position: relative; display: flex; justify-content: center; margin-top: 20px; }
@@ -14,34 +14,46 @@
         #upgrade-menu {
             display: none; position: absolute; background: rgba(20, 20, 30, 0.95); 
             border: 2px solid #00bcd4; padding: 15px; border-radius: 8px; pointer-events: auto;
-            flex-direction: column; gap: 8px; min-width: 180px; z-index: 20;
+            flex-direction: column; gap: 8px; min-width: 180px; z-index: 30;
             box-shadow: 0 0 20px rgba(0,0,0,0.8);
         }
         #upgrade-menu h4 { margin: 0 0 5px 0; color: #00bcd4; border-bottom: 1px solid #444; padding-bottom: 5px; }
-        
         .stat-row { display: flex; justify-content: space-between; font-size: 13px; color: #ccc; margin-bottom: 2px; }
         .stat-val { color: #fff; font-weight: bold; }
-        .stat-val.highlight { color: #f1c40f; }
+        
+        /* 按鈕樣式 */
+        .btn-action { border: none; color: white; padding: 8px; cursor: pointer; border-radius: 4px; width: 100%; margin-top:5px; font-weight: bold; transition: 0.2s;}
+        .btn-upgrade { background: #e67e22; } .btn-upgrade:hover { background: #d35400; }
+        .btn-flip { background: #3498db; } .btn-flip:hover { background: #2980b9; }
+        .btn-sell { background: #c0392b; } .btn-sell:hover { background: #a93226; }
+        .btn-close { background: #555; margin-top: 10px;} .btn-close:hover { background: #666; }
+        .btn-action:disabled { background: #444; cursor: not-allowed; opacity: 0.6; }
 
-        .btn-group { display: flex; gap: 5px; margin-top: 5px; }
-        .btn-upgrade { background: #e67e22; border: none; color: white; padding: 8px; cursor: pointer; border-radius: 4px; flex: 1; font-weight: bold;}
-        .btn-upgrade:disabled { background: #555; cursor: not-allowed; opacity: 0.7; }
-        .btn-sell { background: #c0392b; border: none; color: white; padding: 8px; cursor: pointer; border-radius: 4px; flex: 1; font-weight: bold;}
-        .btn-close { background: #555; width: 100%; margin-top: 5px; border: none; padding: 5px; color: #aaa; cursor: pointer; border-radius: 4px; }
+        #hero-bar {
+            position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 10px; pointer-events: auto; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 10px;
+        }
+        .hero-btn {
+            width: 60px; height: 60px; border: 2px solid #555; border-radius: 8px; background: #333;
+            cursor: pointer; position: relative; overflow: hidden; transition: 0.2s;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .hero-btn:hover { border-color: #ffd700; transform: translateY(-5px); }
+        .hero-btn.active { border-color: #00ff00; box-shadow: 0 0 10px #00ff00; }
+        .hero-btn.disabled { filter: grayscale(100%); cursor: not-allowed; opacity: 0.5; }
+        .hero-btn img { width: 100%; height: 100%; object-fit: contain; }
+        .hero-cost { position: absolute; bottom: 0; right: 0; background: rgba(0,0,0,0.8); color: #ffd700; font-size: 10px; padding: 2px 4px; }
+        .hero-limit { position: absolute; top: 0; left: 0; background: rgba(255,0,0,0.8); color: #fff; font-size: 10px; padding: 2px 4px; display: none; }
+        .hero-btn.disabled .hero-limit { display: block; }
 
         #draft-screen { 
             display: flex; position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(0,0,0,0.9); flex-direction: column; align-items: center; justify-content: center; pointer-events: auto; z-index: 10;
         }
         .cards-container { display: flex; gap: 20px; }
-        .card { 
-            width: 200px; height: 280px; background: #444; border: 2px solid #666; border-radius: 10px; 
-            padding: 20px; cursor: pointer; text-align: center; display: flex; flex-direction: column; justify-content: center;
-        }
-        .card:hover { transform: translateY(-10px); border-color: #00bcd4; background: #555; }
+        .card { width: 200px; height: 280px; background: #444; border: 2px solid #666; border-radius: 10px; padding: 20px; cursor: pointer; text-align: center; display: flex; flex-direction: column; justify-content: center;}
         
-        #loading-msg { color: #00bcd4; font-size: 24px; }
-        #controls { position: absolute; bottom: 10px; width: 100%; text-align: center; pointer-events: none; }
+        #controls { position: absolute; top: 50px; width: 100%; text-align: center; pointer-events: none; text-shadow: 1px 1px 2px #000; }
         button.start-btn { pointer-events: auto; padding: 10px 30px; font-size: 20px; background: #28a745; border: none; color: white; cursor: pointer; border-radius: 5px; display: none; }
     </style>
 </head>
@@ -53,44 +65,70 @@
     <div id="ui-layer">
         <div class="hud">
             <div>❤️ 生命: <span id="lives">20</span></div>
-            <div>💰 金幣: <span id="money">200</span></div>
+            <div>💰 金幣: <span id="money">300</span></div>
             <div>🌊 波數: <span id="wave">1</span></div>
             <div style="font-size: 14px; color: #aaa; margin-top: 5px;">敵人數量: <span id="enemy-count">0</span></div>
         </div>
 
         <div id="upgrade-menu">
-            <h4 id="menu-title">防禦塔 Lv.1</h4>
-            <div class="stat-row"><span>⚔️ 攻擊力:</span> <span class="stat-val" id="menu-dmg">0</span></div>
+            <h4 id="menu-title">塔資訊</h4>
+            <div class="stat-row"><span>⚔️ 攻擊:</span> <span class="stat-val" id="menu-dmg">0</span></div>
             <div class="stat-row"><span>🎯 範圍:</span> <span class="stat-val" id="menu-rng">0</span></div>
-            <div class="stat-row"><span>⚡ 攻速:</span> <span class="stat-val highlight" id="menu-spd">0/s</span></div>
-            <div class="btn-group"><button class="btn-upgrade" id="btn-upgrade-action" onclick="upgradeSelectedTower()">升級</button></div>
-            <div class="btn-group"><button class="btn-sell" id="btn-sell-action" onclick="sellSelectedTower()">出售</button></div>
-            <button class="btn-close" onclick="closeMenu()">關閉選單</button>
+            <div class="stat-row"><span>🛡️ 阻擋:</span> <span class="stat-val" id="menu-blk">0</span></div>
+            <button class="btn-action btn-upgrade" id="btn-upgrade-action" onclick="upgradeSelectedTower()">升級</button>
+            <button class="btn-action btn-flip" id="btn-flip-action" onclick="flipSelectedTower()">🔄 切換方向</button>
+            <button class="btn-action btn-sell" id="btn-sell-action" onclick="sellSelectedTower()">出售</button>
+            <button class="btn-action btn-close" onclick="closeMenu()">關閉</button>
         </div>
 
+        <div id="hero-bar">
+            <div class="hero-btn active" id="btn-basic" onclick="selectBuildMode('BASIC')">
+                <div style="font-size:12px;color:#ccc">基礎塔</div>
+                <div class="hero-cost">$50</div>
+            </div>
+            </div>
+
         <div id="draft-screen">
-            <h2 id="draft-title">讀取 Google Sheets...</h2>
-            <div id="loading-msg">請稍候...</div>
+            <h2 id="draft-title">Loading...</h2>
             <div class="cards-container" id="cards-container"></div>
         </div>
 
         <div id="controls">
-            <p>移動滑鼠預覽建造 ($50) | 點擊防禦塔查看詳情</p>
-            <button class="start-btn" id="start-wave-btn" onclick="startWave()">下一波 (Next Wave)</button>
+            <p>泡泡英雄可阻擋2個敵人 | 點擊已放置的英雄可切換方向</p>
+            <button class="start-btn" id="start-wave-btn" onclick="startWave()">下一波</button>
         </div>
     </div>
 </div>
 
 <script>
-// --- 1. 設置與 Tag 解析器 ---
 const UPGRADE_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?output=csv';
 const ENEMY_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?gid=754158994&output=csv';
 
-let loadedUpgrades = [];
-let loadedEnemyTypes = [];
-let specialStats = { slowFactor: 0, splashRadius: 0 };
-let mousePos = { x: -100, y: -100 }; // 追蹤滑鼠位置
+// --- V11.0 英雄配置 (使用你的GIF連結) ---
+const HERO_CONFIG = [
+    {
+        id: 'hero_bubble',
+        name: '泡泡龍',
+        cost: 150,
+        // 三種狀態的 GIF
+        anim: {
+            start: 'https://cdn.discordapp.com/attachments/795309314352087045/1462578353159798996/---Start-x1.gif?ex=696eb3bc&is=696d623c&hm=f7b2decec7381a25221395f0b5ecb23f01bccc5bc4fb05baa456a4e242b08483&',
+            idle: 'https://cdn.discordapp.com/attachments/795309314352087045/1462578352312549388/---Idle-x1.gif?ex=696eb3bc&is=696d623c&hm=66394cf2381bb85b54e8c2667da5ce369470bee40a0af027def9c2582be9a0e5&',
+            attack: 'https://cdn.discordapp.com/attachments/795309314352087045/1462578352748761404/---Skill_2_Idle_A-x1.gif?ex=696eb3bc&is=696d623c&hm=bbd993121c1df42a7b821d67ae223947cbdd25f558f05e7f2ff8a726d89a0c61&'
+        },
+        stats: { dmg: 20, rng: 150, spd: 60, block: 2 }, // block: 2 (可阻擋2人)
+        scale: { dmg: 10, rng: 10 },
+        placed: false
+    }
+];
 
+let buildMode = 'BASIC';
+let selectedHeroConfig = null;
+let loadedUpgrades = [], loadedEnemyTypes = [];
+let specialStats = { slowFactor: 0, splashRadius: 0 };
+let mousePos = { x: -100, y: -100 };
+
+// --- 數據解析 ---
 function parseCSV(text) {
     const lines = text.trim().split('\n');
     const headers = lines[0].split(',').map(h => h.trim());
@@ -104,77 +142,51 @@ function parseCSV(text) {
     }
     return data;
 }
-
-// --- V9.0 新增: Tag 解析邏輯 ---
 function applyTags(tagString) {
     if (!tagString) return;
-    
-    // 正則表達式：尋找 #code數值 (例如 #dmg50, #rag-30)
-    // 支援小數點，支援負號
     const regex = /#([a-zA-Z]+)([-]?\d+(\.\d+)?)/g;
     let match;
-
     while ((match = regex.exec(tagString)) !== null) {
-        const code = match[1].toLowerCase(); // 代碼 (如 dmg)
-        const val = parseFloat(match[2]);    // 數值 (如 50, -30)
-
+        const code = match[1].toLowerCase(); 
+        const val = parseFloat(match[2]);
         switch(code) {
             case 'dmg': playerStats.globalDamage += val; break;
-            case 'rng': // 兼容兩種寫法
-            case 'rag': playerStats.globalRange += val; break;
-            case 'spd': playerStats.globalFireRate = Math.max(5, playerStats.globalFireRate - val); break; // 注意：這裡val是減少的冷卻幀
-            case 'coin': // 兼容 gold/coin
-            case 'gold': playerStats.goldMultiplier += (val / 100); break; // 假設輸入50代表50%
+            case 'rng': case 'rag': playerStats.globalRange += val; break;
+            case 'spd': playerStats.globalFireRate = Math.max(5, playerStats.globalFireRate - val); break;
+            case 'coin': case 'gold': playerStats.goldMultiplier += (val / 100); break;
             case 'hp': updateLives(val); break;
             case 'ice': specialStats.slowFactor = Math.min(0.8, specialStats.slowFactor + (val/100)); break;
             case 'aoe': specialStats.splashRadius += val; break;
         }
     }
 }
-
 function mapUpgrades(data) {
     return data.map(item => {
-        // 優先讀取 'tags' 欄位，如果沒有則使用舊邏輯
         const tags = item['tags'] || item['Tags'];
-        
-        // 舊邏輯兼容 (Type/Value)
         const type = (item['type'] || item['Type'] || '').toUpperCase();
         const val = parseFloat(item['value'] || item['Value'] || 0);
-
         return {
-            name: item['name'] || '未知', 
-            desc: item['description'] || '',
+            name: item['name'] || '未知', desc: item['description'] || '',
             apply: () => {
-                // 如果有 Tags，優先解析 Tags
-                if (tags && tags.length > 0) {
-                    applyTags(tags);
-                } else if (type) {
-                    // 舊系統回退
-                    let tagStr = "";
-                    if(type === 'DMG') tagStr = `#dmg${val}`;
-                    else if(type === 'RNG') tagStr = `#rng${val}`;
-                    else if(type === 'SPD') tagStr = `#spd${val}`;
-                    else if(type === 'GOLD') tagStr = `#gold${val*100}`; // 舊系統是小數，轉成百分比
-                    else if(type === 'HP') tagStr = `#hp${val}`;
-                    applyTags(tagStr);
+                if (tags) applyTags(tags);
+                else if (type) {
+                    let t = "";
+                    if(type==='DMG') t=`#dmg${val}`; else if(type==='RNG') t=`#rng${val}`;
+                    applyTags(t);
                 }
             }
         };
     });
 }
-
 function mapEnemies(data) {
     return data.filter(item => item['name']).map(item => ({
         name: item['name'],
-        baseHp: parseFloat(item['hp'] || 50) || 50,
-        speed: parseFloat(item['speed'] || 1.5) || 1.5,
-        gold: parseFloat(item['gold'] || 15) || 15,
-        weight: parseFloat(item['weight'] || 10) || 10
+        baseHp: parseFloat(item['hp']||50)||50, speed: parseFloat(item['speed']||1.5)||1.5,
+        gold: parseFloat(item['gold']||15)||15, weight: parseFloat(item['weight']||10)||10
     }));
 }
-
 function getRandomEnemyType() {
-    if (!loadedEnemyTypes || loadedEnemyTypes.length === 0) return { name: "BUG史萊姆", baseHp: 50, speed: 1.0, gold: 10, weight: 1 };
+    if (!loadedEnemyTypes.length) return { name: "BUG", baseHp: 50, speed: 1, gold: 10, weight: 1 };
     const totalWeight = loadedEnemyTypes.reduce((sum, type) => sum + type.weight, 0);
     let random = Math.random() * totalWeight;
     for (const type of loadedEnemyTypes) {
@@ -189,28 +201,49 @@ async function initGameData() {
         const [uRes, eRes] = await Promise.all([fetch(UPGRADE_CSV_URL), fetch(ENEMY_CSV_URL)]);
         loadedUpgrades = mapUpgrades(parseCSV(await uRes.text()));
         loadedEnemyTypes = mapEnemies(parseCSV(await eRes.text()));
-        if(loadedEnemyTypes.length === 0) throw new Error("CSV空");
-        startGameUI();
+        initHeroUI(); startGameUI();
     } catch (e) {
-        console.error("載入失敗:", e);
         loadedEnemyTypes = [{ name: "預設怪", baseHp: 50, speed: 1.5, gold: 10, weight: 100 }];
-        loadedUpgrades = [{ name: "測試卡", desc: "傷害+5", apply:()=>playerStats.globalDamage+=5 }];
-        startGameUI();
+        initHeroUI(); startGameUI();
+    }
+}
+
+function initHeroUI() {
+    const bar = document.getElementById('hero-bar');
+    HERO_CONFIG.forEach(hero => {
+        const btn = document.createElement('div');
+        btn.className = 'hero-btn';
+        btn.id = `btn-${hero.id}`;
+        btn.onclick = () => selectBuildMode(hero.id);
+        btn.innerHTML = `<img src="${hero.anim.idle}"><div class="hero-cost">$${hero.cost}</div><div class="hero-limit">已放置</div>`;
+        bar.appendChild(btn);
+    });
+}
+
+function selectBuildMode(mode) {
+    document.querySelectorAll('.hero-btn').forEach(b => b.classList.remove('active'));
+    if (mode === 'BASIC') {
+        buildMode = 'BASIC'; selectedHeroConfig = null;
+        document.getElementById('btn-basic').classList.add('active');
+    } else {
+        const hero = HERO_CONFIG.find(h => h.id === mode);
+        if (hero.placed) { alert("此英雄只能放一個！"); return; }
+        buildMode = mode; selectedHeroConfig = hero;
+        document.getElementById(`btn-${mode}`).classList.add('active');
     }
 }
 
 function startGameUI() {
-    document.getElementById('loading-msg').style.display = 'none';
     document.getElementById('draft-screen').style.display = 'none';
     document.getElementById('start-wave-btn').style.display = 'inline-block';
 }
 
-// --- 2. 遊戲核心 ---
+// --- 3. 遊戲核心 ---
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-let gameState = { lives: 20, money: 200, wave: 1, enemies: [], towers: [], projectiles: [], isWaveActive: false, isEndingWave: false };
+let gameState = { lives: 20, money: 300, wave: 1, enemies: [], towers: [], projectiles: [], isWaveActive: false, isEndingWave: false };
 let playerStats = { globalDamage: 0, globalRange: 0, globalFireRate: 60, goldMultiplier: 1.0, baseDamage: 15 };
-const path = [{x: 0, y: 100}, {x: 200, y: 100}, {x: 200, y: 400}, {x: 600, y: 400}, {x: 600, y: 200}, {x: 800, y: 200}];
+const path = [{x: 0, y: 100}, {x: 150, y: 100}, {x: 150, y: 500}, {x: 300, y: 500}, {x: 300, y: 100}, {x: 450, y: 100}, {x: 450, y: 500}, {x: 600, y: 500}, {x: 600, y: 100}, {x: 800, y: 100}];
 
 class Enemy {
     constructor(wave) {
@@ -221,15 +254,27 @@ class Enemy {
         const scaleMultiplier = Math.pow(1.2, wave - 1);
         this.hp = Math.floor(type.baseHp * scaleMultiplier);
         this.maxHp = this.hp;
-        this.slowTimer = 0; this.active = true;
+        this.active = true;
+        this.blockedBy = null; // 被誰阻擋
     }
     update() {
         if (!this.active) return;
-        if (this.slowTimer > 0) { this.slowTimer--; this.currentSpeed = this.baseSpeed * (1 - specialStats.slowFactor); }
-        else { this.currentSpeed = this.baseSpeed; }
+        
+        // 阻擋邏輯: 如果被阻擋，停止移動
+        if (this.blockedBy) {
+            // 檢查阻擋者是否還活著/存在
+            if (!this.blockedBy.active) {
+                this.blockedBy = null; // 釋放
+            } else {
+                return; // 停止移動
+            }
+        }
+
         let target = path[this.pathIndex + 1];
         if (!target) { this.active = false; updateLives(-1); return; }
         let dx = target.x - this.x, dy = target.y - this.y, dist = Math.hypot(dx, dy);
+        
+        // 移動
         if (dist < this.currentSpeed) { this.x = target.x; this.y = target.y; this.pathIndex++; } 
         else { this.x += (dx/dist)*this.currentSpeed; this.y += (dy/dist)*this.currentSpeed; }
     }
@@ -237,13 +282,16 @@ class Enemy {
         this.hp -= dmg;
         if (this.hp <= 0 && this.active) {
             this.active = false;
+            // 如果死掉，釋放阻擋佔用
+            if (this.blockedBy) {
+                this.blockedBy.releaseBlock(this);
+            }
             updateMoney(Math.floor(this.goldReward * playerStats.goldMultiplier));
         }
     }
     draw() {
         if (!this.active) return;
-        ctx.fillStyle = this.slowTimer > 0 ? '#00bfff' : 'white';
-        ctx.font = "bold 16px Arial"; ctx.textAlign = "center";
+        ctx.fillStyle = 'white'; ctx.font = "bold 16px Arial"; ctx.textAlign = "center";
         ctx.strokeStyle = "black"; ctx.lineWidth = 3;
         ctx.strokeText(this.name, this.x, this.y); ctx.fillText(this.name, this.x, this.y);
         ctx.fillStyle = "red"; ctx.fillRect(this.x-20, this.y-15, 40, 4);
@@ -252,16 +300,84 @@ class Enemy {
 }
 
 class Tower {
-    constructor(x, y) { 
-        this.x = x; this.y = y; this.cooldown = 0; this.level = 1; 
-        this.baseRange = 100; this.levelDamage = 0; this.levelRange = 0;
-        this.totalCost = 50; 
+    constructor(x, y, heroConfig = null) { 
+        this.x = x; this.y = y; this.cooldown = 0; this.level = 1; this.active = true;
+        this.isHero = !!heroConfig;
+        
+        if (this.isHero) {
+            this.heroId = heroConfig.id;
+            this.baseDamage = heroConfig.stats.dmg;
+            this.baseRange = heroConfig.stats.rng;
+            this.fireRate = heroConfig.stats.spd;
+            this.blockCount = heroConfig.stats.block || 0;
+            this.scale = heroConfig.scale;
+            this.totalCost = heroConfig.cost;
+            this.name = heroConfig.name;
+            
+            // 圖片資源
+            this.imgs = {
+                start: new Image(), idle: new Image(), attack: new Image()
+            };
+            this.imgs.start.src = heroConfig.anim.start;
+            this.imgs.idle.src = heroConfig.anim.idle;
+            this.imgs.attack.src = heroConfig.anim.attack;
+            
+            this.state = 'START'; // START, IDLE, ATTACK
+            this.stateTimer = 60; // Start 動畫播放 60 幀 (約1秒)
+            this.direction = 1; // 1 = 右, -1 = 左
+            this.blockedEnemies = []; // 當前阻擋的敵人
+            
+        } else {
+            this.baseDamage = playerStats.baseDamage; this.baseRange = 100;
+            this.fireRate = playerStats.globalFireRate; this.totalCost = 50;
+            this.name = "基礎塔";
+        }
+        this.levelDamage = 0; this.levelRange = 0;
     }
-    getDamage() { return playerStats.baseDamage + playerStats.globalDamage + this.levelDamage; }
-    getRange() { return this.baseRange + playerStats.globalRange + this.levelRange; }
-    getAttacksPerSecond() { return (60 / playerStats.globalFireRate).toFixed(2); }
-    upgrade() { this.level++; this.levelDamage += 15; this.levelRange += 15; this.totalCost += (this.level - 1) * 150; }
+
+    getDamage() { return this.isHero ? this.baseDamage + this.levelDamage : playerStats.baseDamage + playerStats.globalDamage + this.levelDamage; }
+    getRange() { return this.isHero ? this.baseRange + this.levelRange : this.baseRange + playerStats.globalRange + this.levelRange; }
+    getFireRate() { return this.isHero ? this.fireRate : playerStats.globalFireRate; }
+    
+    upgrade() { 
+        this.level++;
+        if (this.isHero) { this.levelDamage += this.scale.dmg; this.levelRange += this.scale.rng; this.totalCost += this.level * 200; } 
+        else { this.levelDamage += 15; this.levelRange += 15; this.totalCost += (this.level - 1) * 150; }
+    }
+
+    // 釋放阻擋的敵人
+    releaseBlock(enemy) {
+        this.blockedEnemies = this.blockedEnemies.filter(e => e !== enemy);
+    }
+    
     update() {
+        if (this.isHero) {
+            // 1. 狀態機更新
+            if (this.state === 'START') {
+                this.stateTimer--;
+                if (this.stateTimer <= 0) this.state = 'IDLE';
+            } else if (this.state === 'ATTACK') {
+                this.stateTimer--;
+                if (this.stateTimer <= 0) this.state = 'IDLE';
+            }
+
+            // 2. 阻擋邏輯
+            // 檢查範圍內的敵人，如果還沒滿，就阻擋
+            if (this.blockedEnemies.length < this.blockCount) {
+                gameState.enemies.forEach(e => {
+                    if (e.active && !e.blockedBy && this.blockedEnemies.length < this.blockCount) {
+                        let dist = Math.hypot(e.x - this.x, e.y - this.y);
+                        // 阻擋半徑設為 40 (近身)
+                        if (dist < 40) {
+                            e.blockedBy = this;
+                            this.blockedEnemies.push(e);
+                        }
+                    }
+                });
+            }
+        }
+
+        // 3. 攻擊邏輯
         if (this.cooldown > 0) this.cooldown--;
         if (this.cooldown <= 0) {
             let target = null, minDist = Infinity, range = this.getRange();
@@ -271,126 +387,219 @@ class Tower {
                 if (dist <= range && dist < minDist) { minDist = dist; target = e; }
             });
             if (target) {
-                gameState.projectiles.push(new Projectile(this.x, this.y, target, this.getDamage()));
-                this.cooldown = playerStats.globalFireRate;
+                // 英雄塔發射穿透泡泡
+                gameState.projectiles.push(new Projectile(this.x, this.y, target, this.getDamage(), this.isHero));
+                this.cooldown = this.getFireRate();
+                
+                if (this.isHero && this.state !== 'START') {
+                    this.state = 'ATTACK';
+                    this.stateTimer = 20; // 攻擊動畫播 20 幀
+                }
             }
         }
     }
+    
     draw() {
-        ctx.fillStyle = this.level === 1 ? '#4a90e2' : (this.level === 2 ? '#9b59b6' : '#f1c40f');
-        ctx.fillRect(this.x-15, this.y-15, 30, 30);
-        if (specialStats.splashRadius > 0) { ctx.strokeStyle = 'rgba(255, 68, 68, 0.5)'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(this.x,this.y,20,0,Math.PI*2); ctx.stroke(); }
-        if (specialStats.slowFactor > 0) { ctx.strokeStyle = 'rgba(0, 191, 255, 0.5)'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(this.x,this.y,25,0,Math.PI*2); ctx.stroke(); }
-        ctx.fillStyle = '#fff'; ctx.font = '12px Arial'; ctx.fillText("Lv."+this.level, this.x-10, this.y-20);
-        if(selectedTower === this) { ctx.strokeStyle='#00bcd4'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(this.x,this.y,this.getRange(),0,Math.PI*2); ctx.stroke(); }
+        if (this.isHero) {
+            // 決定要畫哪張圖
+            let img = this.imgs.idle;
+            if (this.state === 'START') img = this.imgs.start;
+            else if (this.state === 'ATTACK') img = this.imgs.attack;
+
+            ctx.save(); // 保存畫布狀態
+            ctx.translate(this.x, this.y); // 移動原點到塔中心
+            ctx.scale(this.direction, 1); // 如果 direction 是 -1，圖片會水平翻轉
+            
+            // 繪製圖片 (調整偏移量讓腳對準中心)
+            // 假設 GIF 尺寸比較大，這裡縮放顯示
+            if (img.complete) {
+                ctx.drawImage(img, -40, -60, 80, 80); 
+            }
+            ctx.restore(); // 恢復畫布
+            
+            // 畫血條/等級
+            ctx.fillStyle = '#fff'; ctx.font = '12px Arial'; ctx.textAlign = 'center';
+            ctx.fillText(`Lv.${this.level}`, this.x, this.y - 65);
+            // 顯示阻擋數
+            ctx.fillStyle = '#f1c40f';
+            ctx.fillText(`🛡️ ${this.blockedEnemies.length}/${this.blockCount}`, this.x, this.y + 15);
+
+        } else {
+            ctx.fillStyle = this.level === 1 ? '#4a90e2' : (this.level === 2 ? '#9b59b6' : '#f1c40f');
+            ctx.fillRect(this.x-15, this.y-15, 30, 30);
+            ctx.fillStyle = '#fff'; ctx.font = '12px Arial'; ctx.textAlign = 'center';
+            ctx.fillText("Lv."+this.level, this.x, this.y - 23);
+        }
+
+        if(selectedTower === this) { 
+            ctx.strokeStyle='#00bcd4'; ctx.lineWidth=2; 
+            ctx.beginPath(); ctx.arc(this.x,this.y,this.getRange(),0,Math.PI*2); ctx.stroke(); 
+        }
     }
 }
 
 class Projectile {
-    constructor(x, y, target, damage) { this.x = x; this.y = y; this.target = target; this.speed = 10; this.damage = damage; this.active = true; }
+    constructor(x, y, target, damage, isPenetrating) { 
+        this.x = x; this.y = y; this.target = target; this.speed = 10; 
+        this.damage = damage; this.active = true; 
+        this.isPenetrating = isPenetrating; // 是否穿透
+        this.hitList = []; // 穿透模式下，記錄打過誰，避免同一發打同一個人多次
+        
+        // 計算發射角度 (直線飛行，不追蹤)
+        let dx = target.x - x;
+        let dy = target.y - y;
+        let dist = Math.hypot(dx, dy);
+        this.vx = (dx / dist) * this.speed;
+        this.vy = (dy / dist) * this.speed;
+    }
+    
     update() {
         if (!this.active) return;
-        if (!this.target.active) { this.active = false; return; }
-        let dx = this.target.x - this.x, dy = this.target.y - this.y, dist = Math.hypot(dx, dy);
-        if (dist < this.speed) { this.hit(this.target); } else { this.x += (dx/dist)*this.speed; this.y += (dy/dist)*this.speed; }
+        
+        // 移動
+        this.x += this.vx;
+        this.y += this.vy;
+        
+        // 邊界檢查
+        if (this.x < 0 || this.x > canvas.width || this.y < 0 || this.y > canvas.height) {
+            this.active = false;
+        }
+
+        // 碰撞檢測
+        gameState.enemies.forEach(e => {
+            if (!e.active) return;
+            // 如果是穿透彈，且已經打過這隻，就跳過
+            if (this.isPenetrating && this.hitList.includes(e)) return;
+
+            if (Math.hypot(e.x - this.x, e.y - this.y) < 20) {
+                e.takeDamage(this.damage);
+                
+                if (this.isPenetrating) {
+                    this.hitList.push(e); // 記錄已打擊
+                } else {
+                    this.active = false; // 普通彈打中消失
+                }
+            }
+        });
     }
-    hit(target) {
-        this.active = false; target.takeDamage(this.damage);
-        if (specialStats.slowFactor > 0 && target.active) target.slowTimer = 60;
-        if (specialStats.splashRadius > 0) {
-            gameState.enemies.forEach(e => {
-                if (e === target || !e.active) return;
-                if (Math.hypot(e.x - this.x, e.y - this.y) <= specialStats.splashRadius) e.takeDamage(this.damage * 0.5);
-            });
+    
+    draw() { 
+        if (!this.active) return; 
+        if (this.isPenetrating) {
+            // 泡泡
+            ctx.fillStyle = 'rgba(0, 191, 255, 0.6)';
+            ctx.beginPath(); ctx.arc(this.x, this.y, 8, 0, Math.PI*2); ctx.fill(); 
+            ctx.strokeStyle = '#fff'; ctx.lineWidth=1; ctx.stroke();
+        } else {
+            ctx.fillStyle = '#ffeb3b'; 
+            ctx.beginPath(); ctx.arc(this.x, this.y, 4, 0, Math.PI*2); ctx.fill(); 
         }
     }
-    draw() { if (!this.active) return; ctx.fillStyle = specialStats.slowFactor > 0 ? '#00bfff' : '#ffeb3b'; ctx.beginPath(); ctx.arc(this.x, this.y, 4, 0, Math.PI*2); ctx.fill(); }
 }
 
-// --- UI & Control ---
+// --- Control ---
 let selectedTower = null; const upgradeMenu = document.getElementById('upgrade-menu');
 
-// 追蹤滑鼠位置 (為了預覽功能)
 canvas.addEventListener('mousemove', (e) => {
     const rect = canvas.getBoundingClientRect();
-    mousePos.x = e.clientX - rect.left;
-    mousePos.y = e.clientY - rect.top;
+    mousePos.x = e.clientX - rect.left; mousePos.y = e.clientY - rect.top;
 });
 
 canvas.addEventListener('mousedown', (e) => {
     const rect = canvas.getBoundingClientRect(), x = e.clientX - rect.left, y = e.clientY - rect.top;
-    const clicked = gameState.towers.find(t => Math.hypot(t.x-x, t.y-y) < 25);
+    const clicked = gameState.towers.find(t => Math.hypot(t.x-x, t.y-y) < 30);
     
     if (clicked) {
         openUpgradeMenu(clicked, e.clientX, e.clientY);
     } else {
         closeMenu();
-        if (gameState.money >= 50 && !gameState.towers.some(t => Math.hypot(t.x-x, t.y-y) < 30)) { 
-            gameState.towers.push(new Tower(x, y)); 
-            updateMoney(-50); 
+        const overlap = gameState.towers.some(t => Math.hypot(t.x-x, t.y-y) < 30);
+        if (!overlap) {
+            if (buildMode === 'BASIC' && gameState.money >= 50) { 
+                gameState.towers.push(new Tower(x, y)); updateMoney(-50); 
+            } else if (selectedHeroConfig && !selectedHeroConfig.placed && gameState.money >= selectedHeroConfig.cost) {
+                gameState.towers.push(new Tower(x, y, selectedHeroConfig));
+                updateMoney(-selectedHeroConfig.cost);
+                selectedHeroConfig.placed = true;
+                document.getElementById(`btn-${selectedHeroConfig.id}`).classList.add('disabled');
+                selectBuildMode('BASIC');
+            }
         }
     }
 });
 
-// V9.0: 繪製建造預覽
 function drawBuildPreview() {
-    // 如果錢不夠，或者滑鼠在選單上，就不畫
-    if (gameState.money < 50 || selectedTower) return;
-
-    // 檢查是否重疊
+    if (selectedTower) return;
     const overlap = gameState.towers.some(t => Math.hypot(t.x - mousePos.x, t.y - mousePos.y) < 30);
+    let previewRange = 100 + playerStats.globalRange;
+    let color = '#4a90e2';
     
-    ctx.globalAlpha = 0.5; // 半透明
+    if (buildMode !== 'BASIC' && selectedHeroConfig) {
+        previewRange = selectedHeroConfig.stats.rng;
+        color = '#ffd700';
+    }
     
-    // 預覽塔身
-    ctx.fillStyle = overlap ? '#ff4444' : '#4a90e2'; // 紅色=不可建, 藍色=可建
-    ctx.fillRect(mousePos.x - 15, mousePos.y - 15, 30, 30);
-    
-    // 預覽範圍
-    ctx.beginPath();
-    ctx.arc(mousePos.x, mousePos.y, 100 + playerStats.globalRange, 0, Math.PI*2);
-    ctx.fillStyle = overlap ? 'rgba(255,0,0,0.1)' : 'rgba(74, 144, 226, 0.2)';
-    ctx.fill();
-    ctx.strokeStyle = overlap ? 'red' : '#4a90e2';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    
-    ctx.globalAlpha = 1.0; // 恢復不透明
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath(); ctx.arc(mousePos.x, mousePos.y, previewRange, 0, Math.PI*2);
+    ctx.fillStyle = overlap ? 'rgba(255,0,0,0.2)' : color; ctx.fill();
+    ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.stroke();
+    ctx.globalAlpha = 1.0;
 }
 
-function openUpgradeMenu(tower, mouseX, mouseY) {
+function openUpgradeMenu(tower, mx, my) {
     selectedTower = tower;
-    const cost = tower.level * 150;
+    let cost = tower.isHero ? (tower.level + 1) * 200 : tower.level * 150;
     const sellPrice = Math.floor(tower.totalCost * 0.7);
 
-    document.getElementById('menu-title').innerText = `防禦塔 Lv.${tower.level}`;
+    document.getElementById('menu-title').innerText = `${tower.name} Lv.${tower.level}`;
     document.getElementById('menu-dmg').innerText = Math.floor(tower.getDamage());
     document.getElementById('menu-rng').innerText = Math.floor(tower.getRange());
-    document.getElementById('menu-spd').innerText = tower.getAttacksPerSecond() + " 發/秒";
+    document.getElementById('menu-blk').innerText = tower.isHero ? tower.blockCount : 0;
 
-    const btnUpgrade = document.getElementById('btn-upgrade-action');
-    btnUpgrade.innerText = `升級 (-$${cost})`;
-    btnUpgrade.onclick = () => { if (gameState.money >= cost) { updateMoney(-cost); selectedTower.upgrade(); closeMenu(); } };
-    btnUpgrade.disabled = gameState.money < cost;
+    // 升級按鈕
+    const btnUp = document.getElementById('btn-upgrade-action');
+    btnUp.innerText = `升級 (-$${cost})`;
+    btnUp.onclick = () => { if (gameState.money >= cost) { updateMoney(-cost); selectedTower.upgrade(); closeMenu(); } };
+    
+    // 轉向按鈕 (只有英雄塔顯示)
+    const btnFlip = document.getElementById('btn-flip-action');
+    if (tower.isHero) {
+        btnFlip.style.display = 'block';
+    } else {
+        btnFlip.style.display = 'none';
+    }
 
+    // 出售按鈕
     const btnSell = document.getElementById('btn-sell-action');
     btnSell.innerText = `出售 (+$${sellPrice})`;
-    
-    upgradeMenu.style.left = (mouseX + 10) + 'px'; 
-    upgradeMenu.style.top = (mouseY - 80) + 'px';
-    upgradeMenu.style.display = 'flex';
+
+    upgradeMenu.style.left = (mx + 10) + 'px'; upgradeMenu.style.top = (my - 100) + 'px'; upgradeMenu.style.display = 'flex';
+}
+
+function flipSelectedTower() {
+    if (selectedTower && selectedTower.isHero) {
+        selectedTower.direction *= -1; // 乘以 -1 來翻轉 (1 -> -1, -1 -> 1)
+        closeMenu();
+    }
 }
 
 function sellSelectedTower() {
     if (!selectedTower) return;
     updateMoney(Math.floor(selectedTower.totalCost * 0.7));
+    if (selectedTower.isHero) {
+        // 釋放被阻擋的怪
+        selectedTower.blockedEnemies.forEach(e => e.blockedBy = null);
+        const config = HERO_CONFIG.find(h => h.id === selectedTower.heroId);
+        if (config) { config.placed = false; document.getElementById(`btn-${config.id}`).classList.remove('disabled'); }
+    }
+    selectedTower.active = false; // 標記刪除
     gameState.towers = gameState.towers.filter(t => t !== selectedTower);
     closeMenu();
 }
 
 function closeMenu() { selectedTower = null; upgradeMenu.style.display = 'none'; }
 function updateMoney(v) { gameState.money += v; document.getElementById('money').innerText = gameState.money; }
-function updateLives(v) { gameState.lives += v; document.getElementById('lives').innerText = gameState.lives; if(gameState.lives<=0) { alert("敗北！"); location.reload(); } }
+function updateLives(v) { gameState.lives += v; document.getElementById('lives').innerText = gameState.lives; if(gameState.lives<=0) { alert("Game Over"); location.reload(); } }
 
 function startWave() {
     if (gameState.isWaveActive) return;
@@ -410,18 +619,6 @@ function startWave() {
 function endWave() {
     gameState.isWaveActive = false; gameState.enemies = []; gameState.projectiles = [];
     gameState.wave++; document.getElementById('wave').innerText = gameState.wave;
-    showDraft();
-}
-function showDraft() {
-    const box = document.getElementById('cards-container'); box.innerHTML = '';
-    const pool = loadedUpgrades.length ? loadedUpgrades : [];
-    for(let i=0; i<3; i++) {
-        const u = pool[Math.floor(Math.random()*pool.length)];
-        const d = document.createElement('div'); d.className='card';
-        d.innerHTML = `<h3 style="color:#00bcd4">${u.name}</h3><p style="color:#ccc">${u.desc}</p>`;
-        d.onclick = () => { u.apply(); document.getElementById('draft-screen').style.display='none'; document.getElementById('start-wave-btn').style.display='inline-block'; };
-        box.appendChild(d);
-    }
     document.getElementById('draft-screen').style.display = 'flex';
 }
 
@@ -432,10 +629,7 @@ function loop() {
     gameState.towers.forEach(t => { t.update(); t.draw(); });
     gameState.enemies.forEach(e => { e.update(); e.draw(); });
     gameState.projectiles.forEach(p => { p.update(); p.draw(); });
-    
-    // 繪製預覽 (在實體之後，UI之前)
     drawBuildPreview();
-
     if(gameState.isWaveActive && gameState.enemies.length > 0 && !gameState.enemies.some(e=>e.active)) {
         if (!gameState.isEndingWave) { gameState.isEndingWave = true; setTimeout(endWave, 500); }
     }

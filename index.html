@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>Roguelike TD V17.0 - Final Polish</title>
+    <title>Roguelike TD V18.0 - Golden Apple</title>
     <style>
         body { margin: 0; background: #222; color: #fff; font-family: 'Microsoft JhengHei', sans-serif; overflow: hidden; }
         #game-container { position: relative; display: flex; justify-content: center; margin-top: 20px; }
@@ -11,7 +11,6 @@
         #ui-layer { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 800px; height: 600px; pointer-events: none; }
         .hud { position: absolute; top: 10px; left: 10px; font-size: 18px; font-weight: bold; pointer-events: auto; text-shadow: 1px 1px 2px black; }
         
-        /* 升級選單 */
         #upgrade-menu {
             display: none; position: absolute; background: rgba(20, 20, 30, 0.95); 
             border: 2px solid #00bcd4; padding: 15px; border-radius: 8px; pointer-events: auto;
@@ -22,17 +21,19 @@
         .stat-row { display: flex; justify-content: space-between; font-size: 13px; color: #ccc; margin-bottom: 2px; }
         .stat-val { color: #fff; font-weight: bold; }
         
-        /* 按鈕樣式 */
         .btn-action { border: none; color: white; padding: 8px; cursor: pointer; border-radius: 4px; width: 100%; margin-top:5px; font-weight: bold; transition: 0.2s;}
         .btn-upgrade { background: #e67e22; } .btn-upgrade:hover { background: #d35400; }
         .btn-rotate { background: #3498db; } .btn-rotate:hover { background: #2980b9; }
+        .btn-skill { background: #9b59b6; display: none; } .btn-skill:hover { background: #8e44ad; }
         .btn-sell { background: #c0392b; } .btn-sell:hover { background: #a93226; }
         .btn-close { background: #555; margin-top: 10px;} .btn-close:hover { background: #666; }
         .btn-action:disabled { background: #444; cursor: not-allowed; opacity: 0.6; }
 
-        /* 英雄欄 */
+        /* 技能冷卻時的樣式 */
+        .btn-skill.cooldown { background: #555; cursor: progress; }
+
         #hero-bar {
-            position: absolute; bottom: 10px; left: 20px; /* 改到左下角，避開右下角按鈕 */
+            position: absolute; bottom: 10px; left: 20px;
             display: flex; gap: 10px; pointer-events: auto; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 10px;
         }
         .hero-btn {
@@ -48,7 +49,6 @@
         .hero-limit { position: absolute; top: 0; left: 0; background: rgba(255,0,0,0.8); color: #fff; font-size: 10px; padding: 2px 4px; display: none; }
         .hero-btn.disabled .hero-limit { display: block; }
 
-        /* 抽卡介面 */
         #draft-screen { 
             display: flex; position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             background: rgba(0,0,0,0.9); flex-direction: column; align-items: center; justify-content: center; pointer-events: auto; z-index: 10;
@@ -58,26 +58,12 @@
         
         #loading-msg { color: #00bcd4; font-size: 24px; }
 
-        /* 🟢 右下角按鈕樣式 */
-        #controls { 
-            position: absolute; 
-            bottom: 20px; 
-            right: 20px; 
-            pointer-events: none; /* 讓容器不擋點擊 */
-        }
+        #controls { position: absolute; bottom: 20px; right: 20px; pointer-events: none; }
         button.start-btn { 
-            pointer-events: auto; /* 按鈕本身可以點 */
-            padding: 15px 40px; 
-            font-size: 24px; 
-            background: #28a745; 
-            border: 2px solid #1e7e34; 
-            color: white; 
-            cursor: pointer; 
-            border-radius: 8px; 
-            display: none; 
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-            font-family: 'Microsoft JhengHei', sans-serif;
-            font-weight: bold;
+            pointer-events: auto; padding: 15px 40px; font-size: 24px; 
+            background: #28a745; border: 2px solid #1e7e34; color: white; 
+            cursor: pointer; border-radius: 8px; display: none; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3); font-family: 'Microsoft JhengHei', sans-serif; font-weight: bold;
         }
         button.start-btn:hover { background: #218838; transform: scale(1.05); }
     </style>
@@ -103,6 +89,7 @@
             <div class="stat-row"><span>🛡️ 阻擋:</span> <span class="stat-val" id="menu-blk">0</span></div>
             
             <button class="btn-action btn-upgrade" id="btn-upgrade-action" onclick="upgradeSelectedTower()">升級</button>
+            <button class="btn-action btn-skill" id="btn-skill-action" onclick="activateSkill()">🌟 發動技能</button>
             <button class="btn-action btn-rotate" id="btn-rotate-action" onclick="rotateSelectedTower()">🔄 旋轉</button>
             <button class="btn-action btn-sell" id="btn-sell-action" onclick="sellSelectedTower()">出售</button>
             <button class="btn-action btn-close" onclick="closeMenu()">關閉</button>
@@ -113,10 +100,10 @@
                 <div style="font-size:12px;color:#ccc">基礎塔</div>
                 <div class="hero-cost">$50</div>
             </div>
-            </div>
+        </div>
 
         <div id="draft-screen">
-            <h2 id="draft-title">讀取遊戲資料...</h2>
+            <h2 id="draft-title">Loading...</h2>
             <div id="loading-msg">Loading...</div>
             <div class="cards-container" id="cards-container"></div>
         </div>
@@ -128,7 +115,7 @@
 </div>
 
 <script>
-// --- 資料來源 ---
+// --- Config ---
 const UPGRADE_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?output=csv';
 const ENEMY_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?gid=164420776&output=csv';
 const MAP_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?gid=1573121303&output=csv';
@@ -147,6 +134,30 @@ const HERO_CONFIG = [
         stats: { dmg: 20, rng: 200, spd: 30, block: 2 },
         scale: { dmg: 10, rng: 10 },
         placed: false
+    },
+    {
+        id: 'hero_myrtle',
+        name: '桃金娘',
+        cost: 100, // 便宜
+        anim: {
+            // 正面
+            front_idle: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600096909627614/-_FA062--Idle-x1.webm?ex=696ec7fc&is=696d767c&hm=d0a9bab7239980eca4c069f4e4a273613d629685567375034a4839b1e1d2ebd9&',
+            front_attack: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600096473677996/-_FA062--Attack-x1.webm?ex=696ec7fc&is=696d767c&hm=d330a37dd7074d66f65d3bf0ece896d5f936c520b7816b69c4999aa18582b792&',
+            front_skill_begin: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600097312542791/-_FA062--Skill_Begin-x1.webm?ex=696ec7fc&is=696d767c&hm=6683aafd5581ed1c56d521b6a3da04488a7fa327b94bb7a73fe363884bfe8b6c&',
+            front_skill_loop: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600096158847179/-_FA062--Skill_Loop-x1.webm?ex=696ec7fc&is=696d767c&hm=72ba2f61800fbc9883534ea6ff5efa2f7c554b8b149ae0235b7960fa2d60c54a&',
+            front_skill_end: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600095559188672/-_FA062--Skill_End-x1.webm?ex=696ec7fc&is=696d767c&hm=a58e1d624ca8c10ecada72e1bae9a3dcbcea226dd4f44e931f6fba82f60d3269&',
+            
+            // 背面
+            back_idle: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600111363199058/-_FA062--Idle-x1.webm?ex=696ec800&is=696d7680&hm=1aac1e6666adc7b739d8599b6ef0a6e564ae1116658a851fb89b88456c6a4076&',
+            back_attack: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600112256585738/-_FA062--Attack-x1.webm?ex=696ec800&is=696d7680&hm=fbbd23377a9baab8a01c0a8db4ae5195d0cc9634046dd2e9467d36477fc5f811&',
+            back_skill_begin: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600112554643499/-_FA062--Skill_Begin-x1.webm?ex=696ec800&is=696d7680&hm=9b7026431490816c0c4f8c5ce67cad70668574639d372a6073a826fb717164fe&',
+            back_skill_loop: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600111942139904/-_FA062--Skill_Loop-x1.webm?ex=696ec800&is=696d7680&hm=3cb7032b22737443bd44d25617f9a91e1d5e4882c17d9cd2237af5ecc8bd7826&',
+            back_skill_end: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600111652868320/-_FA062--Skill_End-x1.webm?ex=696ec800&is=696d7680&hm=9d4ef52bcb2837aa8ae9d32bb537947dc8c205811b5fa34499461ede5558d6e3&'
+        },
+        stats: { dmg: 15, rng: 120, spd: 50, block: 1 }, // 阻擋1
+        scale: { dmg: 5, rng: 5 },
+        skill: { duration: 8, moneyPerSec: 15 }, // 技能：8秒, 每秒+15金
+        placed: false
     }
 ];
 
@@ -157,7 +168,6 @@ let path = [];
 let specialStats = { slowFactor: 0, splashRadius: 0 };
 let mousePos = { x: -100, y: -100 };
 
-// --- CSV Parsers ---
 function parseCSV(text) {
     if (!text) return [];
     const lines = text.trim().split('\n');
@@ -219,8 +229,7 @@ function mapEnemies(data) {
 }
 function mapPathData(data) {
     return data.map(p => ({
-        x: parseInt(p.x || p.X || 0),
-        y: parseInt(p.y || p.Y || 0)
+        x: parseInt(p.x || p.X || 0), y: parseInt(p.y || p.Y || 0)
     })).filter(p => !isNaN(p.x) && !isNaN(p.y));
 }
 function getRandomEnemyType() {
@@ -243,15 +252,14 @@ async function initGameData() {
         loadedEnemyTypes = mapEnemies(parseCSV(await eRes.text()));
         const rawMap = parseCSV(await mRes.text());
         path = mapPathData(rawMap);
-        
-        if (loadedUpgrades.length === 0) loadedUpgrades.push({ name: "基礎彈藥", desc: "傷害+1 (備用)", apply: () => playerStats.globalDamage += 1 });
+        if (loadedUpgrades.length === 0) loadedUpgrades.push({ name: "基礎彈藥", desc: "傷害+1", apply: () => playerStats.globalDamage += 1 });
         if (path.length < 2) throw new Error("Map Invalid");
         initHeroUI(); startGameUI();
     } catch (e) {
         console.error("Load Error:", e);
         path = [{x: 0, y: 100}, {x: 800, y: 100}];
         loadedEnemyTypes = [{ name: "預設怪", baseHp: 50, speed: 1.5, gold: 10, weight: 100 }];
-        loadedUpgrades = [{ name: "緊急修復", desc: "數據載入失敗", apply: () => playerStats.globalDamage += 1 }];
+        loadedUpgrades = [{ name: "修復", desc: "備用", apply: () => playerStats.globalDamage += 1 }];
         initHeroUI(); startGameUI();
     }
 }
@@ -263,11 +271,7 @@ function initHeroUI() {
         btn.className = 'hero-btn';
         btn.id = `btn-${hero.id}`;
         btn.onclick = () => selectBuildMode(hero.id);
-        btn.innerHTML = `
-            <video src="${hero.anim.front_idle}" autoplay loop muted></video>
-            <div class="hero-cost">$${hero.cost}</div>
-            <div class="hero-limit">已放置</div>
-        `;
+        btn.innerHTML = `<video src="${hero.anim.front_idle}" autoplay loop muted></video><div class="hero-cost">$${hero.cost}</div><div class="hero-limit">已放置</div>`;
         bar.appendChild(btn);
     });
 }
@@ -352,17 +356,35 @@ class Tower {
             this.baseDamage = heroConfig.stats.dmg;
             this.baseRange = heroConfig.stats.rng;
             this.fireRate = heroConfig.stats.spd;
-            this.blockCount = heroConfig.stats.block || 0;
+            this.baseBlockCount = heroConfig.stats.block || 0; // 基礎阻擋數
+            this.blockCount = this.baseBlockCount;
             this.scale = heroConfig.scale;
             this.totalCost = heroConfig.cost;
             this.name = heroConfig.name;
             
+            // 技能相關
+            this.skillConfig = heroConfig.skill; // 可能為 undefined
+            this.skillActive = false;
+            this.skillTimer = 0;
+            this.skillState = 'IDLE'; // IDLE, BEGIN, LOOP, END
+
             this.media = {
-                front_idle: this.createVideo(heroConfig.anim.front_idle),
-                front_attack: this.createVideo(heroConfig.anim.front_attack),
-                back_idle: this.createVideo(heroConfig.anim.back_idle),
-                back_attack: this.createVideo(heroConfig.anim.back_attack),
+                front_idle: this.createVideo(heroConfig.anim.front_idle, true),
+                front_attack: this.createVideo(heroConfig.anim.front_attack, false),
+                back_idle: this.createVideo(heroConfig.anim.back_idle, true),
+                back_attack: this.createVideo(heroConfig.anim.back_attack, false),
             };
+            
+            // 只有桃金娘有這些動畫
+            if (this.heroId === 'hero_myrtle') {
+                this.media.front_skill_begin = this.createVideo(heroConfig.anim.front_skill_begin, false);
+                this.media.front_skill_loop = this.createVideo(heroConfig.anim.front_skill_loop, true);
+                this.media.front_skill_end = this.createVideo(heroConfig.anim.front_skill_end, false);
+                this.media.back_skill_begin = this.createVideo(heroConfig.anim.back_skill_begin, false);
+                this.media.back_skill_loop = this.createVideo(heroConfig.anim.back_skill_loop, true);
+                this.media.back_skill_end = this.createVideo(heroConfig.anim.back_skill_end, false);
+            }
+
             this.dir = 0; 
             this.isAttacking = false; 
             this.blockedEnemies = [];
@@ -373,14 +395,15 @@ class Tower {
         }
         this.levelDamage = 0; this.levelRange = 0;
     }
-    createVideo(src) {
-        const v = document.createElement('video'); v.src = src; v.muted = true; v.loop = true; v.autoplay = false; v.playsInline = true; return v;
+    
+    createVideo(src, loop) {
+        const v = document.createElement('video'); v.src = src; v.muted = true; v.loop = loop; 
+        v.autoplay = false; v.playsInline = true; return v;
     }
+    
     getDamage() { return this.isHero ? this.baseDamage + this.levelDamage : playerStats.baseDamage + playerStats.globalDamage + this.levelDamage; }
     getRange() { return this.isHero ? this.baseRange + this.levelRange : this.baseRange + playerStats.globalRange + this.levelRange; }
     getFireRate() { return this.isHero ? this.fireRate : playerStats.globalFireRate; }
-    
-    // 🟢 修正：計算每秒攻擊次數
     getAttacksPerSecond() { return (60 / this.getFireRate()).toFixed(2); }
 
     upgrade() { 
@@ -388,7 +411,8 @@ class Tower {
         if (this.isHero) { this.levelDamage += this.scale.dmg; this.levelRange += this.scale.rng; this.totalCost += this.level * 200; } 
         else { this.levelDamage += 15; this.levelRange += 15; this.totalCost += (this.level - 1) * 150; }
     }
-    releaseBlock(enemy) { this.blockedEnemies = this.blockedEnemies.filter(e => e !== enemy); }
+    releaseBlock(enemy) { this.blockedEnemies = this.blockedEnemies.filter(e => e !== enemy); enemy.blockedBy = null; }
+    
     isInRectRange(e, range, width) {
         const dx = e.x - this.x; const dy = e.y - this.y;
         if (this.dir === 0) return dx > 0 && dx < range && Math.abs(dy) < width;
@@ -397,8 +421,74 @@ class Tower {
         if (this.dir === 3) return dy < 0 && dy > -range && Math.abs(dx) < width;
         return false;
     }
+
+    // --- 技能觸發 ---
+    triggerSkill() {
+        if (!this.skillConfig || this.skillActive) return;
+        this.skillActive = true;
+        this.skillState = 'BEGIN';
+        this.skillTimer = this.skillConfig.duration * 60; // 轉換為幀數
+        
+        // 桃金娘機制：技能開啟時，阻擋數變為 0，釋放所有敵人
+        this.blockCount = 0;
+        this.blockedEnemies.forEach(e => e.blockedBy = null);
+        this.blockedEnemies = [];
+        
+        // 播放 Begin 動畫
+        this.playAnim('skill_begin');
+    }
+
+    playAnim(type) {
+        // 停止所有影片
+        Object.values(this.media).forEach(v => { v.pause(); v.currentTime = 0; });
+        
+        let targetKey = "";
+        const isBack = (this.dir === 3);
+        const prefix = isBack ? "back_" : "front_";
+        
+        targetKey = prefix + type;
+        if (this.media[targetKey]) this.media[targetKey].play();
+    }
+
     update() {
         if (this.isHero) {
+            // --- 技能邏輯 ---
+            if (this.skillActive) {
+                // 回費邏輯 (每秒執行一次)
+                if (gameState.frame % 60 === 0) {
+                    updateMoney(this.skillConfig.moneyPerSec);
+                }
+
+                // 狀態機轉移
+                const isBack = (this.dir === 3);
+                const prefix = isBack ? "back_" : "front_";
+
+                if (this.skillState === 'BEGIN') {
+                    // 檢查 Begin 動畫是否播完
+                    if (this.media[prefix + 'skill_begin'] && this.media[prefix + 'skill_begin'].ended) {
+                        this.skillState = 'LOOP';
+                        this.playAnim('skill_loop');
+                    }
+                } else if (this.skillState === 'LOOP') {
+                    this.skillTimer--;
+                    if (this.skillTimer <= 0) {
+                        this.skillState = 'END';
+                        this.playAnim('skill_end');
+                    }
+                } else if (this.skillState === 'END') {
+                    // 檢查 End 動畫是否播完
+                    if (this.media[prefix + 'skill_end'] && this.media[prefix + 'skill_end'].ended) {
+                        this.skillActive = false;
+                        this.skillState = 'IDLE';
+                        this.blockCount = this.baseBlockCount; // 恢復阻擋
+                    }
+                }
+                
+                // 技能期間不進行普通攻擊和阻擋邏輯，直接 return
+                return;
+            }
+
+            // --- 普通邏輯 ---
             if (this.blockedEnemies.length < this.blockCount) {
                 gameState.enemies.forEach(e => {
                     if (e.active && !e.blockedBy && this.blockedEnemies.length < this.blockCount) {
@@ -408,8 +498,17 @@ class Tower {
             }
             let hasTarget = false; const range = this.getRange(); const width = 40; 
             gameState.enemies.forEach(e => { if (e.active && this.isInRectRange(e, range, width)) hasTarget = true; });
-            this.isAttacking = hasTarget;
-            this.updateVideoState();
+            
+            // 只有狀態改變時才切換動畫 (避免每一幀重置)
+            if (this.isAttacking !== hasTarget) {
+                this.isAttacking = hasTarget;
+                this.updateVideoState();
+            }
+
+            // 確保非攻擊狀態下 Idle 在播放
+            if (!this.isAttacking && (!this.media.front_idle.playing && !this.media.back_idle.playing)) {
+                this.updateVideoState();
+            }
 
             if (this.cooldown > 0) this.cooldown--;
             if (this.cooldown <= 0 && hasTarget) {
@@ -418,10 +517,11 @@ class Tower {
                 if (this.dir === 1) vy = 10;
                 if (this.dir === 2) vx = -10;
                 if (this.dir === 3) vy = -10;
-                gameState.projectiles.push(new Projectile(this.x, this.y, vx, vy, this.getDamage(), true));
+                gameState.projectiles.push(new Projectile(this.x, this.y, vx, vy, this.getDamage(), this.heroId === 'hero_sakiko'));
                 this.cooldown = this.getFireRate();
             }
         } else {
+            // Basic tower
             if (this.cooldown > 0) this.cooldown--;
             if (this.cooldown <= 0) {
                 let target = null, minDist = Infinity, range = this.getRange();
@@ -439,18 +539,36 @@ class Tower {
             }
         }
     }
+    
     updateVideoState() {
-        Object.values(this.media).forEach(v => v.pause());
+        // 普通狀態切換 (Idle <-> Attack)
+        Object.values(this.media).forEach(v => {
+            // 技能動畫不應該在這裡被暫停，但因為 update() 裡有 return 保護，所以還好
+            if(!v.src.includes('Skill')) v.pause(); 
+        });
+        
         let activeVideo = null;
         if (this.dir === 3) activeVideo = this.isAttacking ? this.media.back_attack : this.media.back_idle;
         else activeVideo = this.isAttacking ? this.media.front_attack : this.media.front_idle;
-        if (activeVideo) activeVideo.play();
+        
+        if (activeVideo) activeVideo.play().catch(e=>{});
     }
+
     draw() {
         if (this.isHero) {
             let activeVideo = null;
-            if (this.dir === 3) activeVideo = this.isAttacking ? this.media.back_attack : this.media.back_idle;
-            else activeVideo = this.isAttacking ? this.media.front_attack : this.media.front_idle;
+            const isBack = (this.dir === 3);
+            const prefix = isBack ? "back_" : "front_";
+
+            if (this.skillActive) {
+                // 技能狀態繪製
+                if (this.skillState === 'BEGIN') activeVideo = this.media[prefix + 'skill_begin'];
+                else if (this.skillState === 'LOOP') activeVideo = this.media[prefix + 'skill_loop'];
+                else if (this.skillState === 'END') activeVideo = this.media[prefix + 'skill_end'];
+            } else {
+                // 普通狀態繪製
+                activeVideo = this.isAttacking ? this.media[prefix + 'attack'] : this.media[prefix + 'idle'];
+            }
 
             ctx.save(); ctx.translate(this.x, this.y); 
             if (this.dir === 2) ctx.scale(-1, 1);
@@ -460,7 +578,10 @@ class Tower {
             ctx.fillStyle = '#fff'; ctx.font = '12px Arial'; ctx.textAlign = 'center';
             ctx.fillText(`Lv.${this.level}`, this.x, this.y - 75);
             ctx.fillStyle = '#f1c40f';
-            ctx.fillText(`🛡️ ${this.blockedEnemies.length}/${this.blockCount}`, this.x, this.y + 10);
+            
+            // 阻擋顯示: 技能期間顯示 "Skill"
+            const status = this.skillActive ? "Skill" : `🛡️ ${this.blockedEnemies.length}/${this.blockCount}`;
+            ctx.fillText(status, this.x, this.y + 10);
             
             if (selectedTower === this) this.drawRangeRect(this.getRange(), 40);
 
@@ -477,14 +598,8 @@ class Tower {
         if (this.dir === 1) ctx.rotate(Math.PI / 2);
         if (this.dir === 2) ctx.rotate(Math.PI);
         if (this.dir === 3) ctx.rotate(-Math.PI / 2);
-        
-        ctx.fillStyle = 'rgba(255, 215, 0, 0.3)'; 
-        ctx.fillRect(0, -width, range, width * 2); 
-        
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = '#ffd700'; 
-        ctx.strokeRect(0, -width, range, width * 2);
-        
+        ctx.fillStyle = 'rgba(255, 215, 0, 0.3)'; ctx.fillRect(0, -width, range, width * 2); 
+        ctx.lineWidth = 1; ctx.strokeStyle = '#ffd700'; ctx.strokeRect(0, -width, range, width * 2);
         ctx.restore();
     }
 }
@@ -507,7 +622,6 @@ class Projectile {
         
         if (this.isPenetrating) {
             let perpX = -this.normY; let perpY = this.normX;
-            // 🟢 減緩波動頻率 (0.1 -> 0.05)
             let waveOffset = Math.sin(this.distanceTraveled * 0.05) * 20;
             this.x = linearX + perpX * waveOffset; this.y = linearY + perpY * waveOffset;
         } else {
@@ -563,11 +677,7 @@ function drawBuildPreview() {
         const range = selectedHeroConfig.stats.rng; const width = 40;
         ctx.fillStyle = overlap ? 'rgba(255,0,0,0.2)' : 'rgba(255, 215, 0, 0.3)';
         ctx.fillRect(mousePos.x, mousePos.y - width, range, width * 2);
-        
-        // 🟢 預覽邊框變細
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = '#ffd700'; 
-        ctx.strokeRect(mousePos.x, mousePos.y - width, range, width * 2);
+        ctx.lineWidth = 1; ctx.strokeStyle = '#ffd700'; ctx.strokeRect(mousePos.x, mousePos.y - width, range, width * 2);
     } else {
         const range = 100 + playerStats.globalRange;
         ctx.beginPath(); ctx.arc(mousePos.x, mousePos.y, range, 0, Math.PI*2);
@@ -584,7 +694,6 @@ function openUpgradeMenu(tower, mx, my) {
     document.getElementById('menu-title').innerText = `${tower.name} Lv.${tower.level}`;
     document.getElementById('menu-dmg').innerText = Math.floor(tower.getDamage());
     document.getElementById('menu-rng').innerText = Math.floor(tower.getRange());
-    // 🟢 修正：確保 UI 顯示攻速 (Basic & Hero)
     document.getElementById('menu-spd').innerText = tower.getAttacksPerSecond() + " /s";
     document.getElementById('menu-blk').innerText = tower.isHero ? tower.blockCount : 0;
     
@@ -600,10 +709,35 @@ function openUpgradeMenu(tower, mx, my) {
         btnRot.onclick = rotateSelectedTower;
     } else btnRot.style.display = 'none';
     
+    // 🌟 技能按鈕
+    const btnSkill = document.getElementById('btn-skill-action');
+    if (tower.isHero && tower.skillConfig) {
+        btnSkill.style.display = 'block';
+        if (tower.skillActive) {
+            btnSkill.innerText = "技能發動中...";
+            btnSkill.classList.add('disabled');
+            btnSkill.disabled = true;
+        } else {
+            btnSkill.innerText = "🌟 發動技能";
+            btnSkill.classList.remove('disabled');
+            btnSkill.disabled = false;
+        }
+    } else {
+        btnSkill.style.display = 'none';
+    }
+
     const btnSell = document.getElementById('btn-sell-action');
     btnSell.innerText = `出售 (+$${sellPrice})`;
     upgradeMenu.style.left = (mx + 10) + 'px'; upgradeMenu.style.top = (my - 120) + 'px'; upgradeMenu.style.display = 'flex';
 }
+
+function activateSkill() {
+    if (selectedTower && selectedTower.isHero && !selectedTower.skillActive) {
+        selectedTower.triggerSkill();
+        closeMenu();
+    }
+}
+
 function rotateSelectedTower() {
     if (selectedTower && selectedTower.isHero) {
         selectedTower.dir = (selectedTower.dir + 1) % 4;
@@ -650,8 +784,7 @@ function endWave() {
 function showDraft() {
     const box = document.getElementById('cards-container'); box.innerHTML = '';
     const pool = (loadedUpgrades && loadedUpgrades.length > 0) ? loadedUpgrades : 
-                 [{name: "備用彈藥", desc: "強化卡讀取失敗，獲得基礎傷害", apply:()=>{playerStats.globalDamage+=1}}];
-    
+                 [{name: "備用彈藥", desc: "強化卡讀取失敗", apply:()=>{playerStats.globalDamage+=1}}];
     for(let i=0; i<3; i++) {
         const u = pool[Math.floor(Math.random()*pool.length)];
         const d = document.createElement('div'); d.className='card';
@@ -662,6 +795,7 @@ function showDraft() {
     document.getElementById('draft-screen').style.display = 'flex';
 }
 function loop() {
+    gameState.frame = (gameState.frame || 0) + 1;
     ctx.fillStyle = '#333'; ctx.fillRect(0, 0, canvas.width, canvas.height);
     if (path.length > 0) {
         ctx.strokeStyle = '#555'; ctx.lineWidth = 40; ctx.lineCap = 'round'; ctx.lineJoin = 'round';

@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>Roguelike TD V20.0 - Animation Fix</title>
+    <title>Roguelike TD V21.0 - Stable Core</title>
     <style>
         body { margin: 0; background: #222; color: #fff; font-family: 'Microsoft JhengHei', sans-serif; overflow: hidden; }
         #game-container { position: relative; display: flex; justify-content: center; margin-top: 20px; }
@@ -109,12 +109,43 @@
 </div>
 
 <script>
-// ⚠️ 更新 GID 為 698676469
+// --- V21.0 穩定版配置 ---
 const HERO_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?gid=698676469&output=csv';
-
 const UPGRADE_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?output=csv';
 const ENEMY_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?gid=164420776&output=csv';
 const MAP_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?gid=1573121303&output=csv';
+
+// 🟢 內建備用數據 (防止 CSV 載入失敗導致遊戲全白)
+const DEFAULT_HERO_DB = [
+    {
+        id: 'hero_sakiko', name: '丰川祥子', cost: 150,
+        stats: { dmg: 20, rng: 200, spd: 30, block: 2 },
+        skill: null,
+        anim: {
+            front_idle: 'https://cdn.discordapp.com/attachments/795309314352087045/1462581270524461188/---Idle-x1.webm?ex=696eb674&is=696d64f4&hm=fb69f07b3d9c68ba46b8102a170e992a771dd54a70833aa8117228036b1d891c&',
+            front_attack: 'https://cdn.discordapp.com/attachments/795309314352087045/1462581981060530327/---Skill_2_Idle_A-x1.webm?ex=696eb71d&is=696d659d&hm=885403ba7659a04fc3c4a602373fd0ffccd65497e13b61803fd4ffb24e026319&',
+            back_idle: 'https://cdn.discordapp.com/attachments/795309314352087045/1462582587183857891/---Idle-x1.webm?ex=696eb7ae&is=696d662e&hm=5e2d3dce41f037c1120cf2d0d4297e7e0682255dfb6b2e9b3dd010817d10feae&',
+            back_attack: 'https://cdn.discordapp.com/attachments/795309314352087045/1462582587758481560/---Skill_2_Idle_A-x1.webm?ex=696eb7ae&is=696d662e&hm=fb6e88670ed1c10bf572204992d6b1598d7d4eb4d707563cec2d95c919e8df4f&'
+        }, placed: false
+    },
+    {
+        id: 'hero_myrtle', name: '桃金娘', cost: 100,
+        stats: { dmg: 15, rng: 120, spd: 50, block: 1 },
+        skill: { type: 'MONEY', value: 15, duration: 8 },
+        anim: {
+            front_idle: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600096909627614/-_FA062--Idle-x1.webm?ex=696ec7fc&is=696d767c&hm=d0a9bab7239980eca4c069f4e4a273613d629685567375034a4839b1e1d2ebd9&',
+            front_attack: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600096473677996/-_FA062--Attack-x1.webm?ex=696ec7fc&is=696d767c&hm=d330a37dd7074d66f65d3bf0ece896d5f936c520b7816b69c4999aa18582b792&',
+            front_skill_begin: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600097312542791/-_FA062--Skill_Begin-x1.webm?ex=696ec7fc&is=696d767c&hm=6683aafd5581ed1c56d521b6a3da04488a7fa327b94bb7a73fe363884bfe8b6c&',
+            front_skill_loop: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600096158847179/-_FA062--Skill_Loop-x1.webm?ex=696ec7fc&is=696d767c&hm=72ba2f61800fbc9883534ea6ff5efa2f7c554b8b149ae0235b7960fa2d60c54a&',
+            front_skill_end: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600095559188672/-_FA062--Skill_End-x1.webm?ex=696ec7fc&is=696d767c&hm=a58e1d624ca8c10ecada72e1bae9a3dcbcea226dd4f44e931f6fba82f60d3269&',
+            back_idle: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600111363199058/-_FA062--Idle-x1.webm?ex=696ec800&is=696d7680&hm=1aac1e6666adc7b739d8599b6ef0a6e564ae1116658a851fb89b88456c6a4076&',
+            back_attack: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600112256585738/-_FA062--Attack-x1.webm?ex=696ec800&is=696d7680&hm=fbbd23377a9baab8a01c0a8db4ae5195d0cc9634046dd2e9467d36477fc5f811&',
+            back_skill_begin: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600112554643499/-_FA062--Skill_Begin-x1.webm?ex=696ec800&is=696d7680&hm=9b7026431490816c0c4f8c5ce67cad70668574639d372a6073a826fb717164fe&',
+            back_skill_loop: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600111942139904/-_FA062--Skill_Loop-x1.webm?ex=696ec800&is=696d7680&hm=3cb7032b22737443bd44d25617f9a91e1d5e4882c17d9cd2237af5ecc8bd7826&',
+            back_skill_end: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600111652868320/-_FA062--Skill_End-x1.webm?ex=696ec800&is=696d7680&hm=9d4ef52bcb2837aa8ae9d32bb537947dc8c205811b5fa34499461ede5558d6e3&'
+        }, placed: false
+    }
+];
 
 let HERO_DB = []; 
 let buildMode = 'BASIC';
@@ -201,51 +232,22 @@ async function initGameData() {
         path = mapPathData(parseCSV(await mRes.text()));
         
         const rawHero = parseCSV(await hRes.text());
-        if(rawHero.length > 0) {
-            HERO_DB = mapHeroes(rawHero);
-        } else {
-            console.warn("CSV Empty, using fallback");
-            // FALLBACK DATA (PRE-FILLED)
-            HERO_DB = [
-                {
-                    id: 'hero_sakiko', name: '丰川祥子', cost: 150,
-                    stats: { dmg: 20, rng: 200, spd: 30, block: 2 },
-                    skill: null,
-                    anim: {
-                        front_idle: 'https://cdn.discordapp.com/attachments/795309314352087045/1462581270524461188/---Idle-x1.webm?ex=696eb674&is=696d64f4&hm=fb69f07b3d9c68ba46b8102a170e992a771dd54a70833aa8117228036b1d891c&',
-                        front_attack: 'https://cdn.discordapp.com/attachments/795309314352087045/1462581981060530327/---Skill_2_Idle_A-x1.webm?ex=696eb71d&is=696d659d&hm=885403ba7659a04fc3c4a602373fd0ffccd65497e13b61803fd4ffb24e026319&',
-                        back_idle: 'https://cdn.discordapp.com/attachments/795309314352087045/1462582587183857891/---Idle-x1.webm?ex=696eb7ae&is=696d662e&hm=5e2d3dce41f037c1120cf2d0d4297e7e0682255dfb6b2e9b3dd010817d10feae&',
-                        back_attack: 'https://cdn.discordapp.com/attachments/795309314352087045/1462582587758481560/---Skill_2_Idle_A-x1.webm?ex=696eb7ae&is=696d662e&hm=fb6e88670ed1c10bf572204992d6b1598d7d4eb4d707563cec2d95c919e8df4f&'
-                    }, placed: false
-                },
-                {
-                    id: 'hero_myrtle', name: '桃金娘', cost: 100,
-                    stats: { dmg: 15, rng: 120, spd: 50, block: 1 },
-                    skill: { type: 'MONEY', value: 15, duration: 8 },
-                    anim: {
-                        front_idle: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600096909627614/-_FA062--Idle-x1.webm?ex=696ec7fc&is=696d767c&hm=d0a9bab7239980eca4c069f4e4a273613d629685567375034a4839b1e1d2ebd9&',
-                        front_attack: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600096473677996/-_FA062--Attack-x1.webm?ex=696ec7fc&is=696d767c&hm=d330a37dd7074d66f65d3bf0ece896d5f936c520b7816b69c4999aa18582b792&',
-                        front_skill_begin: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600097312542791/-_FA062--Skill_Begin-x1.webm?ex=696ec7fc&is=696d767c&hm=6683aafd5581ed1c56d521b6a3da04488a7fa327b94bb7a73fe363884bfe8b6c&',
-                        front_skill_loop: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600096158847179/-_FA062--Skill_Loop-x1.webm?ex=696ec7fc&is=696d767c&hm=72ba2f61800fbc9883534ea6ff5efa2f7c554b8b149ae0235b7960fa2d60c54a&',
-                        front_skill_end: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600095559188672/-_FA062--Skill_End-x1.webm?ex=696ec7fc&is=696d767c&hm=a58e1d624ca8c10ecada72e1bae9a3dcbcea226dd4f44e931f6fba82f60d3269&',
-                        back_idle: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600111363199058/-_FA062--Idle-x1.webm?ex=696ec800&is=696d7680&hm=1aac1e6666adc7b739d8599b6ef0a6e564ae1116658a851fb89b88456c6a4076&',
-                        back_attack: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600112256585738/-_FA062--Attack-x1.webm?ex=696ec800&is=696d7680&hm=fbbd23377a9baab8a01c0a8db4ae5195d0cc9634046dd2e9467d36477fc5f811&',
-                        back_skill_begin: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600112554643499/-_FA062--Skill_Begin-x1.webm?ex=696ec800&is=696d7680&hm=9b7026431490816c0c4f8c5ce67cad70668574639d372a6073a826fb717164fe&',
-                        back_skill_loop: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600111942139904/-_FA062--Skill_Loop-x1.webm?ex=696ec800&is=696d7680&hm=3cb7032b22737443bd44d25617f9a91e1d5e4882c17d9cd2237af5ecc8bd7826&',
-                        back_skill_end: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600111652868320/-_FA062--Skill_End-x1.webm?ex=696ec800&is=696d7680&hm=9d4ef52bcb2837aa8ae9d32bb537947dc8c205811b5fa34499461ede5558d6e3&'
-                    }, placed: false
-                }
-            ];
-        }
+        if(rawHero.length > 0) HERO_DB = mapHeroes(rawHero);
+        else HERO_DB = DEFAULT_HERO_DB; // Use Fallback
 
-        if (loadedUpgrades.length === 0) loadedUpgrades.push({ name: "基礎彈藥", desc: "備用", apply: () => playerStats.globalDamage += 1 });
+        if (loadedUpgrades.length === 0) loadedUpgrades.push({ name: "基礎彈藥", desc: "傷害+1 (備用)", apply: () => playerStats.globalDamage += 1 });
         if (path.length < 2) path = [{x:0,y:100},{x:800,y:100}];
         
         initHeroUI(); 
         startGameUI();
     } catch (e) {
         console.error("Critical Load Error:", e);
-        alert("資料載入失敗 (F12)");
+        // FORCE FALLBACK TO EVERYTHING
+        path = [{x: 0, y: 100}, {x: 800, y: 100}];
+        loadedEnemyTypes = [{ name: "預設怪", baseHp: 50, speed: 1.5, gold: 10, weight: 100 }];
+        loadedUpgrades = [{ name: "緊急修復", desc: "數據載入失敗", apply: () => playerStats.globalDamage += 1 }];
+        HERO_DB = DEFAULT_HERO_DB;
+        initHeroUI(); startGameUI();
     }
 }
 
@@ -257,9 +259,11 @@ function initHeroUI() {
         btn.className = 'hero-btn';
         btn.id = `btn-${hero.id}`;
         btn.onclick = () => selectBuildMode(hero.id);
-        if (hero.anim.front_idle) btn.innerHTML = `<video src="${hero.anim.front_idle}" autoplay loop muted></video>`;
-        else btn.innerHTML = `<div style="font-size:10px">${hero.name}</div>`;
-        btn.innerHTML += `<div class="hero-cost">$${hero.cost}</div><div class="hero-limit">已放置</div>`;
+        btn.innerHTML = `
+            <video src="${hero.anim.front_idle}" autoplay loop muted></video>
+            <div class="hero-cost">$${hero.cost}</div>
+            <div class="hero-limit">已放置</div>
+        `;
         bar.appendChild(btn);
     });
 }
@@ -284,7 +288,54 @@ function startGameUI() {
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-let gameState = { lives: 20, money: 300, wave: 1, enemies: [], towers: [], projectiles: [], isWaveActive: false, isEndingWave: false, spawnFinished: false };
+let gameState = { 
+    lives: 20, money: 300, wave: 1, 
+    enemies: [], towers: [], projectiles: [], 
+    isWaveActive: false, isEndingWave: false, spawnFinished: false 
+};
+let playerStats = { globalDamage: 0, globalRange: 0, globalFireRate: 60, goldMultiplier: 1.0, baseDamage: 15 };
+
+class Enemy {
+    constructor(wave) {
+        const type = getRandomEnemyType();
+        this.name = type.name; this.goldReward = type.gold;
+        this.pathIndex = 0; 
+        if (path.length > 0) { this.x = path[0].x; this.y = path[0].y; } else { this.x = 0; this.y = 0; }
+        this.baseSpeed = type.speed; this.currentSpeed = this.baseSpeed;
+        const scaleMultiplier = Math.pow(1.2, wave - 1);
+        this.hp = Math.floor(type.baseHp * scaleMultiplier);
+        this.maxHp = this.hp;
+        this.active = true;
+        this.blockedBy = null;
+    }
+    update() {
+        if (!this.active) return;
+        if (this.blockedBy) {
+            if (!this.blockedBy.active) this.blockedBy = null; else return;
+        }
+        let target = path[this.pathIndex + 1];
+        if (!target) { this.active = false; updateLives(-1); return; }
+        let dx = target.x - this.x, dy = target.y - this.y, dist = Math.hypot(dx, dy);
+        if (dist < this.currentSpeed) { this.x = target.x; this.y = target.y; this.pathIndex++; } 
+        else { this.x += (dx/dist)*this.currentSpeed; this.y += (dy/dist)*this.currentSpeed; }
+    }
+    takeDamage(dmg) {
+        this.hp -= dmg;
+        if (this.hp <= 0 && this.active) {
+            this.active = false;
+            if (this.blockedBy) this.blockedBy.releaseBlock(this);
+            updateMoney(Math.floor(this.goldReward * playerStats.goldMultiplier));
+        }
+    }
+    draw() {
+        if (!this.active) return;
+        ctx.fillStyle = 'white'; ctx.font = "bold 16px Arial"; ctx.textAlign = "center";
+        ctx.strokeStyle = "black"; ctx.lineWidth = 3;
+        ctx.strokeText(this.name, this.x, this.y); ctx.fillText(this.name, this.x, this.y);
+        ctx.fillStyle = "red"; ctx.fillRect(this.x-20, this.y-15, 40, 4);
+        ctx.fillStyle = "#00ff00"; ctx.fillRect(this.x-20, this.y-15, 40 * (this.hp/this.maxHp), 4);
+    }
+}
 
 class Tower {
     constructor(x, y, heroConfig = null) { 
@@ -302,8 +353,8 @@ class Tower {
             this.name = heroConfig.name;
             this.skillConfig = heroConfig.skill;
             
-            // 🟢 V20.0: 判斷攻擊動畫是否循環 (桃金娘 = false, 祥子 = true)
-            this.attackAnimLoop = (this.heroId !== 'hero_myrtle');
+            // 🟢 V21.0 攻擊循環設定: 只有祥子(sakiko)是 Loop, 其他人(桃金娘)是 One-Shot
+            this.attackAnimLoop = (this.heroId.includes('sakiko'));
             
             this.media = {};
             const keys = ['front_idle', 'front_attack', 'front_skill_begin', 'front_skill_loop', 'front_skill_end',
@@ -311,18 +362,17 @@ class Tower {
             
             keys.forEach(k => {
                 if (heroConfig.anim[k]) {
-                    // Loop 判斷：idle, skill_loop 為 true; attack 視英雄而定
+                    // Loop 邏輯: idle, skill_loop 為 true; attack 視英雄而定
                     let isLoop = false;
                     if (k.includes('idle') || k.includes('skill_loop')) isLoop = true;
                     if (k.includes('attack')) isLoop = this.attackAnimLoop;
-                    
                     this.media[k] = this.createVideo(heroConfig.anim[k], isLoop);
                 }
             });
 
             this.dir = 0; this.isAttacking = false; this.blockedEnemies = [];
             this.skillActive = false; this.skillState = 'IDLE'; this.skillTimer = 0;
-            this.playingAttackOneShot = false; // 桃金娘專用旗標
+            this.playingAttackOneShot = false;
 
         } else {
             this.baseDamage = playerStats.baseDamage; this.baseRange = 100;
@@ -362,9 +412,10 @@ class Tower {
     }
 
     playAnim(type) {
-        if(this.media) Object.values(this.media).forEach(v => { v.pause(); v.currentTime = 0; });
+        if(!this.media) return;
+        Object.values(this.media).forEach(v => { v.pause(); v.currentTime = 0; });
         const prefix = (this.dir === 3) ? "back_" : "front_";
-        if (this.media && this.media[prefix + type]) this.media[prefix + type].play().catch(()=>{});
+        if (this.media[prefix + type]) this.media[prefix + type].play().catch(()=>{});
     }
 
     update() {
@@ -398,8 +449,8 @@ class Tower {
             let hasTarget = false; const range = this.getRange(); const width = 40; 
             gameState.enemies.forEach(e => { if (e.active && this.isInRectRange(e, range, width)) hasTarget = true; });
             
-            this.isAttacking = hasTarget;
-            this.updateVideoState();
+            if (this.isAttacking !== hasTarget) { this.isAttacking = hasTarget; this.updateVideoState(); }
+            if (!this.isAttacking && this.media && !this.media.front_idle.playing) this.updateVideoState();
 
             if (this.cooldown > 0) this.cooldown--;
             if (this.cooldown <= 0 && hasTarget) {
@@ -411,16 +462,13 @@ class Tower {
                 gameState.projectiles.push(new Projectile(this.x, this.y, vx, vy, this.getDamage(), isSakiko));
                 this.cooldown = this.getFireRate();
 
-                // 🟢 桃金娘專屬：每次攻擊強制播放一次動畫
+                // 🟢 桃金娘 One-Shot 播放邏輯
                 if (!this.attackAnimLoop) {
                     this.playingAttackOneShot = true;
                     this.playAnim('attack');
-                    // 監聽播放結束，回到 idle (透過 updateVideoState 處理)
                     const prefix = (this.dir === 3) ? "back_" : "front_";
                     const vid = this.media[prefix + 'attack'];
-                    if (vid) {
-                        vid.onended = () => { this.playingAttackOneShot = false; };
-                    }
+                    if (vid) vid.onended = () => { this.playingAttackOneShot = false; };
                 }
             }
         } else {
@@ -439,21 +487,11 @@ class Tower {
     }
 
     updateVideoState() {
-        if(!this.media) return;
-        // 如果正在播單次攻擊(桃金娘)，不要打斷
-        if (this.playingAttackOneShot) return;
-
+        if(!this.media || this.playingAttackOneShot) return;
         Object.values(this.media).forEach(v => { if(v && !v.src.includes('Skill')) v.pause(); });
-        
         const prefix = (this.dir === 3) ? "back_" : "front_";
-        // 祥子: 有怪就播 attack(loop), 沒怪就播 idle
-        // 桃金娘: 沒怪播 idle, 有怪(但在冷卻中)也播 idle
         let key = "idle";
-        
-        if (this.attackAnimLoop) {
-            if (this.isAttacking) key = "attack";
-        }
-        
+        if (this.attackAnimLoop && this.isAttacking) key = "attack";
         if (this.media[prefix + key]) this.media[prefix + key].play().catch(()=>{});
     }
 
@@ -475,7 +513,6 @@ class Tower {
                 else if (this.skillState === 'LOOP') activeVideo = this.media[prefix + 'skill_loop'];
                 else activeVideo = this.media[prefix + 'skill_end'];
             } else {
-                // 優先顯示單次攻擊動畫
                 if (this.playingAttackOneShot) activeVideo = this.media[prefix + 'attack'];
                 else if (this.attackAnimLoop && this.isAttacking) activeVideo = this.media[prefix + 'attack'];
                 else activeVideo = this.media[prefix + 'idle'];

@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>Roguelike TD V23.0 - Invisible Hitbox</title>
+    <title>Roguelike TD V24.0 - Fix Placement</title>
     <style>
         body { margin: 0; background: #222; color: #fff; font-family: 'Microsoft JhengHei', sans-serif; overflow: hidden; }
         #game-container { position: relative; display: flex; justify-content: center; margin-top: 20px; }
@@ -11,10 +11,11 @@
         #ui-layer { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 800px; height: 600px; pointer-events: none; }
         .hud { position: absolute; top: 10px; left: 10px; font-size: 18px; font-weight: bold; pointer-events: auto; text-shadow: 1px 1px 2px black; }
         
+        /* 升級選單 */
         #upgrade-menu {
             display: none; position: absolute; background: rgba(20, 20, 30, 0.95); 
             border: 2px solid #00bcd4; padding: 15px; border-radius: 8px; pointer-events: auto;
-            flex-direction: column; gap: 8px; min-width: 180px; z-index: 30;
+            flex-direction: column; gap: 8px; min-width: 180px; z-index: 100; /* 提高層級 */
             box-shadow: 0 0 20px rgba(0,0,0,0.8);
         }
         #upgrade-menu h4 { margin: 0 0 5px 0; color: #00bcd4; border-bottom: 1px solid #444; padding-bottom: 5px; }
@@ -30,10 +31,11 @@
         .btn-action:disabled { background: #444; cursor: not-allowed; opacity: 0.6; }
         .btn-skill.cooldown { background: #555; cursor: progress; }
 
+        /* 英雄欄 */
         #hero-bar {
             position: absolute; bottom: 10px; left: 20px;
             display: flex; gap: 10px; pointer-events: auto; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 10px;
-            max-width: 700px; overflow-x: auto;
+            max-width: 700px; overflow-x: auto; z-index: 50;
         }
         .hero-btn {
             width: 70px; height: 70px; border: 2px solid #555; border-radius: 8px; background: #333; flex-shrink: 0;
@@ -48,15 +50,18 @@
         .hero-limit { position: absolute; top: 0; left: 0; background: rgba(255,0,0,0.8); color: #fff; font-size: 10px; padding: 2px 4px; display: none; }
         .hero-btn.disabled .hero-limit { display: block; }
 
+        /* 抽卡介面 */
         #draft-screen { 
             display: flex; position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-            background: rgba(0,0,0,0.9); flex-direction: column; align-items: center; justify-content: center; pointer-events: auto; z-index: 10;
+            background: rgba(0,0,0,0.9); flex-direction: column; align-items: center; justify-content: center; pointer-events: auto; z-index: 200;
         }
         .cards-container { display: flex; gap: 20px; }
         .card { width: 200px; height: 280px; background: #444; border: 2px solid #666; border-radius: 10px; padding: 20px; cursor: pointer; text-align: center; display: flex; flex-direction: column; justify-content: center;}
         
         #loading-msg { color: #00bcd4; font-size: 24px; }
-        #controls { position: absolute; bottom: 20px; right: 20px; pointer-events: none; }
+
+        /* 右下角按鈕 (層級調高，確保可點擊) */
+        #controls { position: absolute; bottom: 20px; right: 20px; pointer-events: none; z-index: 60; }
         button.start-btn { 
             pointer-events: auto; padding: 15px 40px; font-size: 24px; 
             background: #28a745; border: 2px solid #1e7e34; color: white; 
@@ -103,7 +108,7 @@
         </div>
 
         <div id="controls">
-            <button class="start-btn" id="start-wave-btn" onclick="startWave()">下一波</button>
+            <button class="start-btn" id="start-wave-btn" onclick="startWave()">下一波 (Next Wave)</button>
         </div>
     </div>
 </div>
@@ -115,7 +120,7 @@ const UPGRADE_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOC
 const ENEMY_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?gid=164420776&output=csv';
 const MAP_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?gid=1573121303&output=csv';
 
-// 🟢 內建備用數據 (Fallback)
+// Fallback Data
 const DEFAULT_HERO_DB = [
     { id: 'hero_sakiko', name: '丰川祥子', cost: 150, stats: { dmg: 20, rng: 200, spd: 30, block: 2 }, skill: null, anim: { front_idle: 'https://cdn.discordapp.com/attachments/795309314352087045/1462581270524461188/---Idle-x1.webm?ex=696eb674&is=696d64f4&hm=fb69f07b3d9c68ba46b8102a170e992a771dd54a70833aa8117228036b1d891c&', front_attack: 'https://cdn.discordapp.com/attachments/795309314352087045/1462581981060530327/---Skill_2_Idle_A-x1.webm?ex=696eb71d&is=696d659d&hm=885403ba7659a04fc3c4a602373fd0ffccd65497e13b61803fd4ffb24e026319&', back_idle: 'https://cdn.discordapp.com/attachments/795309314352087045/1462582587183857891/---Idle-x1.webm?ex=696eb7ae&is=696d662e&hm=5e2d3dce41f037c1120cf2d0d4297e7e0682255dfb6b2e9b3dd010817d10feae&', back_attack: 'https://cdn.discordapp.com/attachments/795309314352087045/1462582587758481560/---Skill_2_Idle_A-x1.webm?ex=696eb7ae&is=696d662e&hm=fb6e88670ed1c10bf572204992d6b1598d7d4eb4d707563cec2d95c919e8df4f&' }, placed: false },
     { id: 'hero_myrtle', name: '桃金娘', cost: 100, stats: { dmg: 15, rng: 120, spd: 50, block: 1 }, skill: { type: 'MONEY', value: 15, duration: 8 }, anim: { front_idle: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600096909627614/-_FA062--Idle-x1.webm?ex=696ec7fc&is=696d767c&hm=d0a9bab7239980eca4c069f4e4a273613d629685567375034a4839b1e1d2ebd9&', front_attack: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600096473677996/-_FA062--Attack-x1.webm?ex=696ec7fc&is=696d767c&hm=d330a37dd7074d66f65d3bf0ece896d5f936c520b7816b69c4999aa18582b792&', front_skill_begin: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600097312542791/-_FA062--Skill_Begin-x1.webm?ex=696ec7fc&is=696d767c&hm=6683aafd5581ed1c56d521b6a3da04488a7fa327b94bb7a73fe363884bfe8b6c&', front_skill_loop: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600096158847179/-_FA062--Skill_Loop-x1.webm?ex=696ec7fc&is=696d767c&hm=72ba2f61800fbc9883534ea6ff5efa2f7c554b8b149ae0235b7960fa2d60c54a&', front_skill_end: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600095559188672/-_FA062--Skill_End-x1.webm?ex=696ec7fc&is=696d767c&hm=a58e1d624ca8c10ecada72e1bae9a3dcbcea226dd4f44e931f6fba82f60d3269&', back_idle: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600111363199058/-_FA062--Idle-x1.webm?ex=696ec800&is=696d7680&hm=1aac1e6666adc7b739d8599b6ef0a6e564ae1116658a851fb89b88456c6a4076&', back_attack: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600112256585738/-_FA062--Attack-x1.webm?ex=696ec800&is=696d7680&hm=fbbd23377a9baab8a01c0a8db4ae5195d0cc9634046dd2e9467d36477fc5f811&', back_skill_begin: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600112554643499/-_FA062--Skill_Begin-x1.webm?ex=696ec800&is=696d7680&hm=9b7026431490816c0c4f8c5ce67cad70668574639d372a6073a826fb717164fe&', back_skill_loop: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600111942139904/-_FA062--Skill_Loop-x1.webm?ex=696ec800&is=696d7680&hm=3cb7032b22737443bd44d25617f9a91e1d5e4882c17d9cd2237af5ecc8bd7826&', back_skill_end: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600111652868320/-_FA062--Skill_End-x1.webm?ex=696ec800&is=696d7680&hm=9d4ef52bcb2837aa8ae9d32bb537947dc8c205811b5fa34499461ede5558d6e3&' }, placed: false }
@@ -129,7 +134,7 @@ let path = [];
 let specialStats = { slowFactor: 0, splashRadius: 0 };
 let mousePos = { x: -100, y: -100 };
 
-// --- CSV ---
+// --- 強化 CSV 解析 (Clean Data) ---
 function parseCSV(text) {
     if (!text) return [];
     const lines = text.trim().split('\n');
@@ -140,14 +145,20 @@ function parseCSV(text) {
         const currentline = lines[i].split(','); 
         if(currentline.length < headers.length) continue;
         let obj = {};
-        for (let j = 0; j < headers.length; j++) obj[headers[j]] = currentline[j] ? currentline[j].trim() : "";
+        for (let j = 0; j < headers.length; j++) {
+            // .trim() 去除多餘空格，防止 " 100" 變成 NaN
+            let val = currentline[j] ? currentline[j].trim() : "";
+            obj[headers[j]] = val;
+        }
         data.push(obj);
     }
     return data;
 }
+
 function mapHeroes(data) {
     return data.filter(h => h.id).map(h => ({
-        id: h.id, name: h.name || 'Unknown', cost: parseInt(h.cost) || 100,
+        id: h.id, name: h.name || 'Unknown', 
+        cost: parseInt(h.cost) || 100, // 預設值 100
         stats: { dmg: parseInt(h.dmg)||10, rng: parseInt(h.rng)||100, spd: parseInt(h.spd)||60, block: parseInt(h.block)||0 },
         skill: (h.skill_type && h.skill_type !== 'NONE') ? { type: h.skill_type, value: parseFloat(h.skill_val)||0, duration: parseFloat(h.skill_dur)||0 } : null,
         anim: {
@@ -156,6 +167,7 @@ function mapHeroes(data) {
         }, placed: false
     }));
 }
+
 function mapEnemies(data) { return data.filter(i=>i.name).map(i=>({name:i.name, baseHp:parseFloat(i.hp||50), speed:parseFloat(i.speed||1.5), gold:parseFloat(i.gold||15), weight:parseFloat(i.weight||10)})); }
 function mapPathData(data) { return data.map(p=>({x:parseInt(p.x||p.X||0), y:parseInt(p.y||p.Y||0)})).filter(p=>!isNaN(p.x)&&!isNaN(p.y)); }
 function mapUpgrades(data) { return data.map(item => { const tags = item['tags'] || item['Tags']; const type = (item['type'] || item['Type'] || '').toUpperCase(); const val = parseFloat(item['value'] || item['Value'] || 0); return { name: item['name'], desc: item['description'], apply: () => { if(tags) applyTags(tags); else if(type) { let t=""; if(type==='DMG')t=`#dmg${val}`; applyTags(t); } } }; }); }
@@ -171,11 +183,14 @@ async function initGameData() {
         path = mapPathData(parseCSV(await mRes.text()));
         const rawHero = parseCSV(await hRes.text());
         if(rawHero.length > 0) HERO_DB = mapHeroes(rawHero); else HERO_DB = DEFAULT_HERO_DB;
+        
+        // 確保數據有效
         if (loadedUpgrades.length === 0) loadedUpgrades.push({ name: "基礎彈藥", desc: "傷害+1 (備用)", apply: () => playerStats.globalDamage += 1 });
         if (path.length < 2) path = [{x:0,y:100},{x:800,y:100}];
         initHeroUI(); startGameUI();
     } catch (e) {
         console.error("Critical Load Error:", e);
+        // 使用預設數據，讓遊戲即使沒網路也能跑
         path = [{x: 0, y: 100}, {x: 800, y: 100}];
         loadedEnemyTypes = [{ name: "預設怪", baseHp: 50, speed: 1.5, gold: 10, weight: 100 }];
         loadedUpgrades = [{ name: "緊急修復", desc: "數據載入失敗", apply: () => playerStats.globalDamage += 1 }];
@@ -205,6 +220,22 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 let gameState = { lives: 20, money: 300, wave: 1, enemies: [], towers: [], projectiles: [], isWaveActive: false, isEndingWave: false, spawnFinished: false };
 
+// --- 判斷點是否在路徑上 (禁止建造) ---
+function isPointOnPath(x, y) {
+    // 簡單判斷：檢查是否靠近任何路徑線段 (距離 < 25)
+    for (let i = 0; i < path.length - 1; i++) {
+        const A = path[i], B = path[i+1];
+        // 計算點到線段的距離
+        const l2 = Math.hypot(B.x - A.x, B.y - A.y) ** 2;
+        if (l2 === 0) continue;
+        let t = ((x - A.x) * (B.x - A.x) + (y - A.y) * (B.y - A.y)) / l2;
+        t = Math.max(0, Math.min(1, t));
+        const px = A.x + t * (B.x - A.x), py = A.y + t * (B.y - A.y);
+        if (Math.hypot(x - px, y - py) < 30) return true; // 30 是路徑寬度半徑
+    }
+    return false;
+}
+
 class Enemy {
     constructor(wave) {
         const type = getRandomEnemyType();
@@ -220,10 +251,9 @@ class Enemy {
     }
     update() {
         if (!this.active) return;
-        // 🟢 修復：自動解除阻擋 (Anti-Stuck)
         if (this.blockedBy) {
             if (!this.blockedBy.active) this.blockedBy = null;
-            else if (Math.hypot(this.x - this.blockedBy.x, this.y - this.blockedBy.y) > 60) this.blockedBy = null; // 距離太遠強制解除
+            else if (Math.hypot(this.x - this.blockedBy.x, this.y - this.blockedBy.y) > 60) this.blockedBy = null;
             else return;
         }
         let target = path[this.pathIndex + 1];
@@ -254,55 +284,31 @@ class Enemy {
 class Projectile {
     constructor(x, y, vx, vy, damage, type) { 
         this.startX = x; this.startY = y; this.vx = vx; this.vy = vy; this.damage = damage; this.active = true;
-        this.type = type; // 'NORMAL', 'SAKIKO', 'MYRTLE'
-        this.hitList = [];
+        this.type = type; this.hitList = [];
         this.speed = Math.hypot(vx, vy); this.normX = vx/this.speed; this.normY = vy/this.speed; this.dist = 0;
-        
-        // 🟢 桃金娘專用設定
-        if (this.type === 'MYRTLE') {
-            this.width = 40; // 寬判定
-            this.visible = false; // 看不見
-        } else {
-            this.width = 4;
-            this.visible = true;
-        }
+        if (this.type === 'MYRTLE') { this.width = 40; this.visible = false; } else { this.width = 4; this.visible = true; }
     }
     update() {
         if (!this.active) return;
         this.dist += this.speed;
         let lx = this.startX + this.normX * this.dist, ly = this.startY + this.normY * this.dist;
-        
-        if (this.type === 'SAKIKO') { // 祥子泡泡
-            let off = Math.sin(this.dist * 0.05) * 20;
-            this.x = lx - this.normY * off; this.y = ly + this.normX * off;
-        } else {
-            this.x = lx; this.y = ly;
-        }
-        
+        if (this.type === 'SAKIKO') { let off = Math.sin(this.dist * 0.05) * 20; this.x = lx - this.normY * off; this.y = ly + this.normX * off; } else { this.x = lx; this.y = ly; }
         if (this.x<0||this.x>canvas.width||this.y<0||this.y>canvas.height) this.active = false;
-        
         gameState.enemies.forEach(e => {
             if (!e.active) return;
-            // 祥子穿透
             if (this.type === 'SAKIKO' && this.hitList.includes(e)) return;
-            
-            // 🟢 判定範圍 (桃金娘寬度 30, 其他 20)
             let hitDist = (this.type === 'MYRTLE') ? 30 : 20; 
             if (Math.hypot(e.x - this.x, e.y - this.y) < hitDist) { 
                 e.takeDamage(this.damage);
-                if (this.type === 'SAKIKO') this.hitList.push(e); 
-                else this.active = false; // 桃金娘/普通塔 打中消失
+                if (this.type === 'SAKIKO') this.hitList.push(e); else this.active = false; 
             }
         });
     }
     draw() { 
-        if (!this.active || !this.visible) return; // 🟢 隱形彈不畫
+        if (!this.active || !this.visible) return; 
         if (this.type === 'SAKIKO') {
-            ctx.fillStyle = 'rgba(0,191,255,0.6)'; ctx.beginPath(); ctx.arc(this.x, this.y, 8, 0, Math.PI*2); ctx.fill(); 
-            ctx.strokeStyle = '#fff'; ctx.lineWidth=1; ctx.stroke();
-        } else {
-            ctx.fillStyle = '#ffeb3b'; ctx.beginPath(); ctx.arc(this.x, this.y, 4, 0, Math.PI*2); ctx.fill(); 
-        }
+            ctx.fillStyle = 'rgba(0,191,255,0.6)'; ctx.beginPath(); ctx.arc(this.x, this.y, 8, 0, Math.PI*2); ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth=1; ctx.stroke();
+        } else { ctx.fillStyle = '#ffeb3b'; ctx.beginPath(); ctx.arc(this.x, this.y, 4, 0, Math.PI*2); ctx.fill(); }
     }
 }
 
@@ -354,12 +360,7 @@ class Tower {
             if (this.cooldown > 0) this.cooldown--;
             if (this.cooldown <= 0 && hasTarget) {
                 let vx = 0, vy = 0; if (this.dir === 0) vx = 10; else if (this.dir === 1) vy = 10; else if (this.dir === 2) vx = -10; else if (this.dir === 3) vy = -10;
-                
-                // 🟢 判斷子彈類型
-                let pType = 'NORMAL';
-                if (this.heroId.includes('sakiko')) pType = 'SAKIKO';
-                if (this.heroId.includes('myrtle')) pType = 'MYRTLE';
-                
+                let pType = 'NORMAL'; if (this.heroId.includes('sakiko')) pType = 'SAKIKO'; if (this.heroId.includes('myrtle')) pType = 'MYRTLE';
                 gameState.projectiles.push(new Projectile(this.x, this.y, vx, vy, this.getDamage(), pType));
                 this.cooldown = this.getFireRate();
                 if (!this.attackAnimLoop) {
@@ -430,7 +431,82 @@ class Tower {
     }
 }
 
-// --- Main Loop ---
+let selectedTower = null; const upgradeMenu = document.getElementById('upgrade-menu');
+canvas.addEventListener('mousemove', (e) => { const r = canvas.getBoundingClientRect(); mousePos.x = e.clientX - r.left; mousePos.y = e.clientY - r.top; });
+canvas.addEventListener('mousedown', (e) => {
+    const r = canvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+    const clicked = gameState.towers.find(t => Math.hypot(t.x-x, t.y-y) < 30);
+    if (clicked) openUpgradeMenu(clicked, e.clientX, e.clientY);
+    else {
+        closeMenu();
+        const overlap = gameState.towers.some(t => Math.hypot(t.x-x, t.y-y) < 30);
+        // 🟢 檢查是否在路徑上
+        const onPath = isPointOnPath(x, y);
+        if (!overlap && !onPath) {
+            if (buildMode === 'BASIC' && gameState.money >= 50) { gameState.towers.push(new Tower(x, y)); updateMoney(-50); }
+            else if (selectedHeroConfig && !selectedHeroConfig.placed && gameState.money >= selectedHeroConfig.cost) {
+                gameState.towers.push(new Tower(x, y, selectedHeroConfig)); updateMoney(-selectedHeroConfig.cost);
+                selectedHeroConfig.placed = true; document.getElementById(`btn-${selectedHeroConfig.id}`).classList.add('disabled'); selectBuildMode('BASIC');
+            }
+        }
+    }
+});
+
+function drawBuildPreview() {
+    if (selectedTower) return;
+    const overlap = gameState.towers.some(t => Math.hypot(t.x - mousePos.x, t.y - mousePos.y) < 30);
+    const onPath = isPointOnPath(mousePos.x, mousePos.y); // 🟢 顯示紅色如果擋路
+    
+    ctx.globalAlpha = 0.5;
+    const isBad = overlap || onPath;
+    
+    if (buildMode !== 'BASIC' && selectedHeroConfig) {
+        const range = selectedHeroConfig.stats.rng, width = 40;
+        ctx.fillStyle = isBad ? 'rgba(255,0,0,0.5)' : 'rgba(255, 215, 0, 0.3)';
+        ctx.fillRect(mousePos.x, mousePos.y - width, range, width * 2);
+        ctx.lineWidth = 1; ctx.strokeStyle = isBad ? 'red' : '#ffd700'; ctx.strokeRect(mousePos.x, mousePos.y - width, range, width * 2);
+    } else {
+        ctx.beginPath(); ctx.arc(mousePos.x, mousePos.y, 100 + playerStats.globalRange, 0, Math.PI*2);
+        ctx.fillStyle = isBad ? 'rgba(255,0,0,0.5)' : 'rgba(74, 144, 226, 0.2)'; ctx.fill();
+    }
+    ctx.globalAlpha = 1.0;
+}
+
+function openUpgradeMenu(tower, mx, my) {
+    selectedTower = tower;
+    document.getElementById('menu-title').innerText = `${tower.name} Lv.${tower.level}`;
+    document.getElementById('menu-dmg').innerText = Math.floor(tower.getDamage());
+    document.getElementById('menu-rng').innerText = Math.floor(tower.getRange());
+    document.getElementById('menu-spd').innerText = tower.getAttacksPerSecond() + "/s";
+    document.getElementById('menu-blk').innerText = tower.isHero ? tower.blockCount : 0;
+    const btnSkill = document.getElementById('btn-skill-action');
+    if (tower.isHero && tower.skillConfig) {
+        btnSkill.style.display = 'block';
+        if (tower.skillActive) { btnSkill.innerText = "技能發動中..."; btnSkill.classList.add('disabled'); btnSkill.disabled = true; }
+        else { btnSkill.innerText = "🌟 發動技能"; btnSkill.classList.remove('disabled'); btnSkill.disabled = false; }
+    } else btnSkill.style.display = 'none';
+    const btnRot = document.getElementById('btn-rotate-action');
+    if (tower.isHero) { btnRot.style.display = 'block'; btnRot.innerText = `🔄 旋轉 (${['右','下','左','上'][tower.dir]})`; } else btnRot.style.display = 'none';
+    upgradeMenu.style.left = (mx + 10) + 'px'; upgradeMenu.style.top = (my - 120) + 'px'; upgradeMenu.style.display = 'flex';
+}
+function rotateSelectedTower() {
+    if (selectedTower && selectedTower.isHero) {
+        selectedTower.dir = (selectedTower.dir + 1) % 4;
+        const dirs = ['右', '下', '左', '上'];
+        document.getElementById('btn-rotate-action').innerText = `🔄 旋轉 (${dirs[selectedTower.dir]})`;
+    }
+}
+function upgradeSelectedTower() { if(selectedTower && gameState.money >= 150) { updateMoney(-150); selectedTower.upgrade(); closeMenu(); } }
+function activateSkill() { if(selectedTower) { selectedTower.triggerSkill(); closeMenu(); } }
+function sellSelectedTower() { if(!selectedTower)return; updateMoney(Math.floor(selectedTower.totalCost*0.7)); if(selectedTower.isHero) { const h = HERO_DB.find(i=>i.id===selectedTower.heroId); if(h){ h.placed=false; document.getElementById(`btn-${h.id}`).classList.remove('disabled'); }} selectedTower.active=false; gameState.towers=gameState.towers.filter(t=>t!==selectedTower); closeMenu(); }
+function closeMenu() { selectedTower = null; upgradeMenu.style.display = 'none'; }
+function updateMoney(v) { gameState.money += v; document.getElementById('money').innerText = gameState.money; }
+function updateLives(v) { gameState.lives += v; document.getElementById('lives').innerText = gameState.lives; if(gameState.lives<=0) { alert("Game Over"); location.reload(); } }
+
+function startWave() { if(gameState.isWaveActive)return; gameState.isWaveActive=true; gameState.isEndingWave=false; gameState.spawnFinished=false; document.getElementById('start-wave-btn').style.display='none'; closeMenu(); let max=5+(gameState.wave*3), count=0; const s = setInterval(() => { if(!gameState.isWaveActive){clearInterval(s);return;} try{gameState.enemies.push(new Enemy(gameState.wave));}catch(e){} count++; if(count>=max){clearInterval(s); gameState.spawnFinished=true;} }, Math.max(200, 800-(gameState.wave*20))); }
+function endWave() { gameState.isWaveActive=false; gameState.enemies=[]; gameState.projectiles=[]; gameState.wave++; document.getElementById('wave').innerText=gameState.wave; showDraft(); }
+function showDraft() { const box=document.getElementById('cards-container'); box.innerHTML=''; const pool=(loadedUpgrades.length?loadedUpgrades:[{name:"Backup",desc:"Data Error",apply:()=>playerStats.globalDamage+=1}]); for(let i=0;i<3;i++){ const u=pool[Math.floor(Math.random()*pool.length)]; const d=document.createElement('div'); d.className='card'; d.innerHTML=`<h3 style="color:#00bcd4">${u.name}</h3><p style="color:#ccc">${u.desc}</p>`; d.onclick=()=>{u.apply();document.getElementById('draft-screen').style.display='none';document.getElementById('start-wave-btn').style.display='inline-block';}; box.appendChild(d); } document.getElementById('draft-screen').style.display='flex'; }
+
 function loop() {
     try {
         gameState.frame = (gameState.frame||0)+1; ctx.fillStyle='#333'; ctx.fillRect(0,0,canvas.width,canvas.height);
@@ -439,7 +515,7 @@ function loop() {
         gameState.enemies.forEach(e=>{e.update();e.draw();}); gameState.projectiles.forEach(p=>{p.update();p.draw();});
         drawBuildPreview();
         if(gameState.isWaveActive && gameState.spawnFinished && !gameState.enemies.some(e=>e.active) && !gameState.isEndingWave) { gameState.isEndingWave=true; setTimeout(endWave,500); }
-    } catch(e) { console.error("Game Loop Error:", e); }
+    } catch(e) { console.error("Loop:", e); }
     requestAnimationFrame(loop);
 }
 initGameData(); loop();

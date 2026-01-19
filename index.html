@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>Roguelike TD V23.0 - Stability & Myrtle Fix</title>
+    <title>Roguelike TD V24.0 - Configurable Update</title>
     <style>
         body { margin: 0; background: #222; color: #fff; font-family: 'Microsoft JhengHei', sans-serif; overflow: hidden; }
         #game-container { position: relative; display: flex; justify-content: center; margin-top: 20px; }
@@ -28,8 +28,7 @@
         .btn-sell { background: #c0392b; } .btn-sell:hover { background: #a93226; }
         .btn-close { background: #555; margin-top: 10px;} .btn-close:hover { background: #666; }
         .btn-action:disabled { background: #444; cursor: not-allowed; opacity: 0.6; }
-        .btn-skill.cooldown { background: #555; cursor: progress; }
-
+        
         #hero-bar {
             position: absolute; bottom: 10px; left: 20px;
             display: flex; gap: 10px; pointer-events: auto; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 10px;
@@ -110,40 +109,18 @@
 
 <script>
 // --- Config ---
+// 請確保 Google Sheet 已新增 skill_cd 和 attack_type 欄位
 const HERO_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?gid=698676469&output=csv';
 const UPGRADE_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?output=csv';
 const ENEMY_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?gid=164420776&output=csv';
 const MAP_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSrSpOCkX8ZvOlMmbAKsxJWKtQrVe-B8ae021GZ96AtS7yCjF54N94j-ksQQc33xOBqSLMHD24EDxj8/pub?gid=1573121303&output=csv';
 
-// 🟢 內建備用數據 (Hardcoded Fallback)
 const DEFAULT_HERO_DB = [
     {
         id: 'hero_sakiko', name: '丰川祥子', cost: 150,
         stats: { dmg: 20, rng: 200, spd: 30, block: 2 },
-        skill: null,
-        anim: {
-            front_idle: 'https://cdn.discordapp.com/attachments/795309314352087045/1462581270524461188/---Idle-x1.webm?ex=696eb674&is=696d64f4&hm=fb69f07b3d9c68ba46b8102a170e992a771dd54a70833aa8117228036b1d891c&',
-            front_attack: 'https://cdn.discordapp.com/attachments/795309314352087045/1462581981060530327/---Skill_2_Idle_A-x1.webm?ex=696eb71d&is=696d659d&hm=885403ba7659a04fc3c4a602373fd0ffccd65497e13b61803fd4ffb24e026319&',
-            back_idle: 'https://cdn.discordapp.com/attachments/795309314352087045/1462582587183857891/---Idle-x1.webm?ex=696eb7ae&is=696d662e&hm=5e2d3dce41f037c1120cf2d0d4297e7e0682255dfb6b2e9b3dd010817d10feae&',
-            back_attack: 'https://cdn.discordapp.com/attachments/795309314352087045/1462582587758481560/---Skill_2_Idle_A-x1.webm?ex=696eb7ae&is=696d662e&hm=fb6e88670ed1c10bf572204992d6b1598d7d4eb4d707563cec2d95c919e8df4f&'
-        }, placed: false
-    },
-    {
-        id: 'hero_myrtle', name: '桃金娘', cost: 100,
-        stats: { dmg: 15, rng: 120, spd: 50, block: 1 },
-        skill: { type: 'MONEY', value: 15, duration: 8 },
-        anim: {
-            front_idle: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600096909627614/-_FA062--Idle-x1.webm?ex=696ec7fc&is=696d767c&hm=d0a9bab7239980eca4c069f4e4a273613d629685567375034a4839b1e1d2ebd9&',
-            front_attack: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600096473677996/-_FA062--Attack-x1.webm?ex=696ec7fc&is=696d767c&hm=d330a37dd7074d66f65d3bf0ece896d5f936c520b7816b69c4999aa18582b792&',
-            front_skill_begin: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600097312542791/-_FA062--Skill_Begin-x1.webm?ex=696ec7fc&is=696d767c&hm=6683aafd5581ed1c56d521b6a3da04488a7fa327b94bb7a73fe363884bfe8b6c&',
-            front_skill_loop: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600096158847179/-_FA062--Skill_Loop-x1.webm?ex=696ec7fc&is=696d767c&hm=72ba2f61800fbc9883534ea6ff5efa2f7c554b8b149ae0235b7960fa2d60c54a&',
-            front_skill_end: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600095559188672/-_FA062--Skill_End-x1.webm?ex=696ec7fc&is=696d767c&hm=a58e1d624ca8c10ecada72e1bae9a3dcbcea226dd4f44e931f6fba82f60d3269&',
-            back_idle: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600111363199058/-_FA062--Idle-x1.webm?ex=696ec800&is=696d7680&hm=1aac1e6666adc7b739d8599b6ef0a6e564ae1116658a851fb89b88456c6a4076&',
-            back_attack: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600112256585738/-_FA062--Attack-x1.webm?ex=696ec800&is=696d7680&hm=fbbd23377a9baab8a01c0a8db4ae5195d0cc9634046dd2e9467d36477fc5f811&',
-            back_skill_begin: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600112554643499/-_FA062--Skill_Begin-x1.webm?ex=696ec800&is=696d7680&hm=9b7026431490816c0c4f8c5ce67cad70668574639d372a6073a826fb717164fe&',
-            back_skill_loop: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600111942139904/-_FA062--Skill_Loop-x1.webm?ex=696ec800&is=696d7680&hm=3cb7032b22737443bd44d25617f9a91e1d5e4882c17d9cd2237af5ecc8bd7826&',
-            back_skill_end: 'https://cdn.discordapp.com/attachments/795309314352087045/1462600111652868320/-_FA062--Skill_End-x1.webm?ex=696ec800&is=696d7680&hm=9d4ef52bcb2837aa8ae9d32bb537947dc8c205811b5fa34499461ede5558d6e3&'
-        }, placed: false
+        skill: null, attackType: 'PENETRATE',
+        anim: { front_idle: '', front_attack: '', back_idle: '', back_attack: '' }, placed: false
     }
 ];
 
@@ -172,7 +149,7 @@ function parseCSV(text) {
     return data;
 }
 
-// --- Data Mapping ---
+// 🟢 1. 更新 Hero Mapping 支援 CD 和 Attack Type
 function mapHeroes(data) {
     return data.filter(h => h.id).map(h => ({
         id: h.id,
@@ -187,19 +164,16 @@ function mapHeroes(data) {
         skill: (h.skill_type && h.skill_type !== 'NONE') ? {
             type: h.skill_type,
             value: parseFloat(h.skill_val) || 0,
-            duration: parseFloat(h.skill_dur) || 0
+            duration: parseFloat(h.skill_dur) || 0,
+            cooldown: parseFloat(h.skill_cd) || 30 // 🟢 預設 30秒 CD
         } : null,
+        // 🟢 讀取攻擊類型，若無則根據ID猜測 (兼容舊版)
+        attackType: h.attack_type ? h.attack_type.toUpperCase() : (h.id.includes('myrtle') ? 'RECT' : (h.id.includes('sakiko') ? 'PENETRATE' : 'PROJECTILE')),
         anim: {
-            front_idle: h.anim_front_idle,
-            front_attack: h.anim_front_attack,
-            front_skill_begin: h.anim_front_skill_begin,
-            front_skill_loop: h.anim_front_skill_loop,
-            front_skill_end: h.anim_front_skill_end,
-            back_idle: h.anim_back_idle,
-            back_attack: h.anim_back_attack,
-            back_skill_begin: h.anim_back_skill_begin,
-            back_skill_loop: h.anim_back_skill_loop,
-            back_skill_end: h.anim_back_skill_end
+            front_idle: h.anim_front_idle, front_attack: h.anim_front_attack,
+            front_skill_begin: h.anim_front_skill_begin, front_skill_loop: h.anim_front_skill_loop, front_skill_end: h.anim_front_skill_end,
+            back_idle: h.anim_back_idle, back_attack: h.anim_back_attack,
+            back_skill_begin: h.anim_back_skill_begin, back_skill_loop: h.anim_back_skill_loop, back_skill_end: h.anim_back_skill_end
         },
         placed: false
     }));
@@ -211,11 +185,18 @@ function mapUpgrades(data) { return data.map(item => {
     const tags = item['tags'] || item['Tags']; const type = (item['type'] || item['Type'] || '').toUpperCase(); const val = parseFloat(item['value'] || item['Value'] || 0);
     return { name: item['name'], desc: item['description'], apply: () => { if(tags) applyTags(tags); else if(type) { let t=""; if(type==='DMG')t=`#dmg${val}`; applyTags(t); } } };
 }); }
+
+// 🟢 2. 增強 Ice (Slow) 和 AoE (Splash) 的數值邏輯
 function applyTags(tagString) { 
     if(!tagString)return; const regex=/#([a-zA-Z]+)([-]?\d+(\.\d+)?)/g; let match; while((match=regex.exec(tagString))!==null){
         const c=match[1].toLowerCase(),v=parseFloat(match[2]); 
-        if(c==='dmg')playerStats.globalDamage+=v; else if(c==='rng')playerStats.globalRange+=v; else if(c==='spd')playerStats.globalFireRate=Math.max(5,playerStats.globalFireRate-v);
-        else if(c==='gold')playerStats.goldMultiplier+=(v/100); else if(c==='hp')updateLives(v); else if(c==='ice')specialStats.slowFactor+=v/100; else if(c==='aoe')specialStats.splashRadius+=v;
+        if(c==='dmg')playerStats.globalDamage+=v; 
+        else if(c==='rng')playerStats.globalRange+=v; 
+        else if(c==='spd')playerStats.globalFireRate=Math.max(5,playerStats.globalFireRate-v);
+        else if(c==='gold')playerStats.goldMultiplier+=(v/100); 
+        else if(c==='hp')updateLives(v); 
+        else if(c==='ice') specialStats.slowFactor = Math.min(0.8, specialStats.slowFactor + (v/100)); // 上限 80% 緩速
+        else if(c==='aoe') specialStats.splashRadius += v; // 增加爆炸半徑
     }
 }
 function getRandomEnemyType() { if (!loadedEnemyTypes.length) return { name: "BUG", baseHp: 50, speed: 1, gold: 10, weight: 1 }; const t = loadedEnemyTypes.reduce((s, i) => s + i.weight, 0); let r = Math.random() * t; for (const i of loadedEnemyTypes) { if (r < i.weight) return i; r -= i.weight; } return loadedEnemyTypes[0]; }
@@ -233,7 +214,7 @@ async function initGameData() {
         const rawHero = parseCSV(await hRes.text());
         
         if(rawHero.length > 0) HERO_DB = mapHeroes(rawHero);
-        else HERO_DB = DEFAULT_HERO_DB; // 🟢 Use Fallback
+        else HERO_DB = DEFAULT_HERO_DB;
 
         if (loadedUpgrades.length === 0) loadedUpgrades.push({ name: "基礎彈藥", desc: "傷害+1 (備用)", apply: () => playerStats.globalDamage += 1 });
         if (path.length < 2) path = [{x:0,y:100},{x:800,y:100}];
@@ -242,7 +223,6 @@ async function initGameData() {
         startGameUI();
     } catch (e) {
         console.error("Critical Load Error:", e);
-        // FORCE FALLBACK
         path = [{x: 0, y: 100}, {x: 800, y: 100}];
         loadedEnemyTypes = [{ name: "預設怪", baseHp: 50, speed: 1.5, gold: 10, weight: 100 }];
         loadedUpgrades = [{ name: "緊急修復", desc: "數據載入失敗", apply: () => playerStats.globalDamage += 1 }];
@@ -295,7 +275,6 @@ let gameState = {
 };
 let playerStats = { globalDamage: 0, globalRange: 0, globalFireRate: 60, goldMultiplier: 1.0, baseDamage: 15 };
 
-// 🟢 V23.0 Update: Enemy Movement Fix
 class Enemy {
     constructor(wave) {
         const type = getRandomEnemyType();
@@ -304,21 +283,24 @@ class Enemy {
         if (path && path.length > 0) { this.x = path[0].x; this.y = path[0].y; } 
         else { this.x = 0; this.y = 0; this.active = false; }
         
-        this.baseSpeed = type.speed; this.currentSpeed = this.baseSpeed;
+        this.baseSpeed = type.speed; 
+        this.currentSpeed = this.baseSpeed;
         const scaleMultiplier = Math.pow(1.2, wave - 1);
         this.hp = Math.floor(type.baseHp * scaleMultiplier);
         this.maxHp = this.hp;
         this.active = true;
         this.blockedBy = null;
+        this.slowEffect = 0; // 當前緩速
     }
     update() {
         if (!this.active) return;
-        
-        if (this.blockedBy && !this.blockedBy.active) {
-            this.blockedBy = null;
-        }
-        
+        if (this.blockedBy && !this.blockedBy.active) this.blockedBy = null;
         if (this.blockedBy) return; 
+
+        // 🟢 3. 緩速邏輯實裝
+        // 基礎速度 * (1 - 緩速係數)。如果有緩速，地板速度至少保留 0.5
+        const actualSpeed = this.baseSpeed * Math.max(0.2, (1 - specialStats.slowFactor));
+        this.currentSpeed = actualSpeed;
 
         let target = path[this.pathIndex + 1];
         if (!target) { this.active = false; updateLives(-1); return; }
@@ -326,14 +308,10 @@ class Enemy {
         let dx = target.x - this.x, dy = target.y - this.y;
         let dist = Math.hypot(dx, dy);
         
-        // 🟢 FIX: Prevent getting stuck on nodes
         if(isNaN(dist) || dist < 1 || dist <= this.currentSpeed) {
-            this.x = target.x; 
-            this.y = target.y; 
-            this.pathIndex++;
+            this.x = target.x; this.y = target.y; this.pathIndex++;
         } else { 
-            this.x += (dx/dist)*this.currentSpeed; 
-            this.y += (dy/dist)*this.currentSpeed; 
+            this.x += (dx/dist)*this.currentSpeed; this.y += (dy/dist)*this.currentSpeed; 
         }
     }
     takeDamage(dmg) {
@@ -347,7 +325,12 @@ class Enemy {
     draw() {
         if (!this.active) return;
         ctx.fillStyle = 'white'; ctx.font = "bold 16px Arial"; ctx.textAlign = "center";
-        ctx.strokeStyle = "black"; ctx.lineWidth = 3;
+        
+        // 🟢 緩速時顯示藍色外框
+        if (specialStats.slowFactor > 0) ctx.strokeStyle = "#00bfff"; 
+        else ctx.strokeStyle = "black";
+        
+        ctx.lineWidth = 3;
         ctx.strokeText(this.name, this.x, this.y); ctx.fillText(this.name, this.x, this.y);
         ctx.fillStyle = "red"; ctx.fillRect(this.x-20, this.y-15, 40, 4);
         ctx.fillStyle = "#00ff00"; ctx.fillRect(this.x-20, this.y-15, 40 * (this.hp/this.maxHp), 4);
@@ -370,12 +353,13 @@ class Tower {
             this.name = heroConfig.name;
             this.skillConfig = heroConfig.skill;
             
-            this.attackAnimLoop = (this.heroId.includes('sakiko'));
+            // 🟢 讀取攻擊類型
+            this.attackType = heroConfig.attackType || 'PROJECTILE';
+            this.attackAnimLoop = (this.attackType === 'PENETRATE'); // 祥子類穿透才需要 Loop
             
             this.media = {};
             const keys = ['front_idle', 'front_attack', 'front_skill_begin', 'front_skill_loop', 'front_skill_end',
                           'back_idle', 'back_attack', 'back_skill_begin', 'back_skill_loop', 'back_skill_end'];
-            
             keys.forEach(k => {
                 if (heroConfig.anim[k]) {
                     let isLoop = false;
@@ -386,14 +370,16 @@ class Tower {
             });
 
             this.dir = 0; this.isAttacking = false; this.blockedEnemies = [];
-            this.skillActive = false; this.skillState = 'IDLE'; this.skillTimer = 0;
+            this.skillActive = false; this.skillState = 'IDLE'; 
+            this.skillTimer = 0; 
+            this.skillCDTimer = 0; // 🟢 技能冷卻計時器
             this.playingAttackOneShot = false;
 
         } else {
             this.baseDamage = playerStats.baseDamage; this.baseRange = 100;
             this.fireRate = playerStats.globalFireRate; this.totalCost = 50;
             this.name = "基礎塔";
-            this.levelDamage = 0; this.levelRange = 0;
+            this.attackType = 'PROJECTILE';
         }
     }
 
@@ -402,7 +388,11 @@ class Tower {
         v.autoplay = false; v.playsInline = true; return v;
     }
 
-    getDamage() { return this.isHero ? this.baseDamage + (this.level-1)*5 : playerStats.baseDamage + playerStats.globalDamage + (this.level-1)*15; }
+    getDamage() { 
+        if (this.isHero) return this.baseDamage + playerStats.globalDamage + (this.level-1) * 20;
+        else return playerStats.baseDamage + playerStats.globalDamage + (this.level-1) * 15; 
+    }
+    
     getRange() { return this.isHero ? this.baseRange + (this.level-1)*5 : this.baseRange + playerStats.globalRange + (this.level-1)*15; }
     getFireRate() { return this.isHero ? this.fireRate : playerStats.globalFireRate; }
     getAttacksPerSecond() { return (60 / this.getFireRate()).toFixed(2); }
@@ -414,13 +404,18 @@ class Tower {
     }
 
     triggerSkill() {
-        if (!this.skillConfig || this.skillActive) return;
+        // 🟢 4. 技能限制：波次開始後 & 無冷卻時
+        if (!gameState.isWaveActive) { alert("技能只能在戰鬥波次中使用！"); return; }
+        if (!this.skillConfig || this.skillActive || this.skillCDTimer > 0) return;
+        
         this.skillActive = true;
         this.skillState = 'BEGIN';
         this.skillTimer = this.skillConfig.duration * 60;
+        // 設定 CD (秒 -> 幀)
+        this.skillCDTimer = (this.skillConfig.cooldown || 30) * 60;
+
         if (this.skillConfig.type === 'MONEY') {
             this.blockCount = 0; 
-            // 🟢 強制釋放所有阻擋敵人
             this.blockedEnemies.forEach(e => e.blockedBy = null);
             this.blockedEnemies = [];
         }
@@ -435,8 +430,11 @@ class Tower {
     }
 
     update() {
+        // 🟢 技能 CD 倒數
+        if (this.skillCDTimer > 0) this.skillCDTimer--;
+
         if (this.isHero) {
-            // SKILL
+            // SKILL Logic
             if (this.skillActive) {
                 if (gameState.frame % 60 === 0 && this.skillConfig.type === 'MONEY') updateMoney(this.skillConfig.value);
                 const prefix = (this.dir === 3) ? "back_" : "front_";
@@ -452,10 +450,8 @@ class Tower {
                 return;
             }
 
-            // NORMAL
-            // 🟢 清理已死亡或無效的敵人
+            // Target Finding
             this.blockedEnemies = this.blockedEnemies.filter(e => e.active);
-
             if (this.blockedEnemies.length < this.blockCount) {
                 gameState.enemies.forEach(e => {
                     if (e.active && !e.blockedBy && this.blockedEnemies.length < this.blockCount) {
@@ -473,22 +469,19 @@ class Tower {
             if (this.cooldown > 0) this.cooldown--;
             if (this.cooldown <= 0 && hasTarget) {
                 let vx = 0, vy = 0;
-                
-                // 🟢 V23.0 Update: Bullet speed for Myrtle
-                const isMyrtle = (this.heroId.includes('myrtle'));
-                const bulletSpeed = isMyrtle ? 15 : 10;
-                
+                // 🟢 根據攻擊類型決定彈速
+                let bulletSpeed = (this.attackType === 'RECT') ? 15 : 10;
+
                 if (this.dir === 0) vx = bulletSpeed; else if (this.dir === 1) vy = bulletSpeed;
                 else if (this.dir === 2) vx = -bulletSpeed; else if (this.dir === 3) vy = -bulletSpeed;
                 
-                const isSakiko = (this.heroId.includes('sakiko'));
-
-                if (isMyrtle) {
-                    // 🟢 Myrtle shoots invisible rectangle (width 60)
+                // 🟢 根據 CSV 定義產生 Projectile
+                if (this.attackType === 'RECT') {
                     gameState.projectiles.push(new Projectile(this.x, this.y, vx, vy, this.getDamage(), false, true, 60));
+                } else if (this.attackType === 'PENETRATE') {
+                    gameState.projectiles.push(new Projectile(this.x, this.y, vx, vy, this.getDamage(), true, false, 0));
                 } else {
-                    // Normal projectile
-                    gameState.projectiles.push(new Projectile(this.x, this.y, vx, vy, this.getDamage(), isSakiko, false, 0));
+                    gameState.projectiles.push(new Projectile(this.x, this.y, vx, vy, this.getDamage(), false, false, 0));
                 }
 
                 this.cooldown = this.getFireRate();
@@ -502,6 +495,7 @@ class Tower {
                 }
             }
         } else {
+            // Basic Tower Logic
             if (this.cooldown > 0) this.cooldown--;
             if (this.cooldown <= 0) {
                 let target = null, minDist = Infinity, range = this.getRange();
@@ -556,7 +550,13 @@ class Tower {
             ctx.fillStyle = '#fff'; ctx.font = '12px Arial'; ctx.textAlign = 'center';
             ctx.fillText(`Lv.${this.level}`, this.x, this.y - 75);
             ctx.fillStyle = '#f1c40f';
-            ctx.fillText(this.skillActive ? "SKILL" : `🛡️ ${this.blockedEnemies.length}/${this.blockCount}`, this.x, this.y + 10);
+            
+            // 🟢 顯示技能狀態 (CD中 / 準備就緒)
+            let statusText = `🛡️ ${this.blockedEnemies.length}/${this.blockCount}`;
+            if (this.skillActive) statusText = "SKILL";
+            else if (this.skillCDTimer > 0) statusText = `CD: ${(this.skillCDTimer/60).toFixed(1)}s`;
+            
+            ctx.fillText(statusText, this.x, this.y + 10);
             if (selectedTower === this) this.drawRangeRect(this.getRange(), 40);
         } else {
             ctx.fillStyle = this.level === 1 ? '#4a90e2' : (this.level === 2 ? '#9b59b6' : '#f1c40f');
@@ -574,22 +574,19 @@ class Tower {
     }
 }
 
-// 🟢 V23.0 Update: Projectile with Rect Collision & Visibility Control
 class Projectile {
     constructor(x, y, vx, vy, damage, isPenetrating, isRect = false, rectWidth = 0) { 
         this.startX = x; this.startY = y; this.vx = vx; this.vy = vy; this.damage = damage; this.active = true; 
         this.isPenetrating = isPenetrating; this.hitList = [];
         this.speed = Math.hypot(vx, vy); this.normX = vx/this.speed; this.normY = vy/this.speed; this.dist = 0;
         
-        // 🟢 New Props
         this.isRect = isRect;
         this.rectWidth = rectWidth;
-        this.visible = !isRect; // Invisible if it's a hit box
+        this.visible = !isRect;
     }
     update() {
         if (!this.active) return; this.dist += this.speed;
         
-        // Move
         if (this.isPenetrating && !this.isRect) { 
             let off = Math.sin(this.dist * 0.05) * 20; 
             this.x = this.startX + this.normX * this.dist - this.normY * off; 
@@ -601,30 +598,40 @@ class Projectile {
 
         if (this.x<0||this.x>canvas.width||this.y<0||this.y>canvas.height) this.active = false;
         
-        // 🟢 Collision
         gameState.enemies.forEach(e => {
             if (!e.active || !this.active) return;
             if (this.isPenetrating && this.hitList.includes(e)) return;
             
             let isHit = false;
             if (this.isRect) {
-                // Rect Collision (Simple AABB approx center)
                 const range = this.rectWidth / 2;
                 if (Math.abs(e.x - this.x) < range && Math.abs(e.y - this.y) < range) isHit = true;
             } else {
-                // Circle Collision
                 if (Math.hypot(e.x - this.x, e.y - this.y) < 25) isHit = true;
             }
 
             if (isHit) { 
-                e.takeDamage(this.damage); 
+                e.takeDamage(this.damage);
+                
+                // 🟢 5. 爆炸 (Splash) 實裝
+                if (specialStats.splashRadius > 0) {
+                    gameState.enemies.forEach(other => {
+                        if (other !== e && other.active && Math.hypot(other.x - e.x, other.y - e.y) < specialStats.splashRadius) {
+                            other.takeDamage(this.damage * 0.5); // 爆炸傷害 50%
+                            // 簡單爆炸特效 (可視化)
+                            ctx.beginPath(); ctx.arc(e.x, e.y, specialStats.splashRadius, 0, Math.PI*2);
+                            ctx.fillStyle = 'rgba(255, 165, 0, 0.3)'; ctx.fill();
+                        }
+                    });
+                }
+
                 if(this.isPenetrating) this.hitList.push(e); 
                 else this.active = false; 
             }
         });
     }
     draw() { 
-        if (!this.active || !this.visible) return; // 🟢 Don't draw invisible bullets
+        if (!this.active || !this.visible) return; 
         ctx.fillStyle = this.isPenetrating ? 'rgba(0,191,255,0.6)' : '#ffeb3b'; 
         ctx.beginPath(); ctx.arc(this.x, this.y, 4, 0, Math.PI*2); ctx.fill(); 
     }
@@ -676,13 +683,25 @@ function openUpgradeMenu(tower, mx, my) {
     if (tower.isHero && tower.skillConfig) {
         btnSkill.style.display = 'block';
         if (tower.skillActive) { btnSkill.innerText = "技能發動中..."; btnSkill.classList.add('disabled'); btnSkill.disabled = true; }
+        else if (tower.skillCDTimer > 0) { btnSkill.innerText = `CD: ${(tower.skillCDTimer/60).toFixed(1)}s`; btnSkill.classList.add('disabled'); btnSkill.disabled = true; }
         else { btnSkill.innerText = "🌟 發動技能"; btnSkill.classList.remove('disabled'); btnSkill.disabled = false; }
     } else btnSkill.style.display = 'none';
 
     const btnRot = document.getElementById('btn-rotate-action');
     if (tower.isHero) { btnRot.style.display = 'block'; btnRot.innerText = `🔄 旋轉 (${['右','下','左','上'][tower.dir]})`; } else btnRot.style.display = 'none';
 
-    upgradeMenu.style.left = (mx + 10) + 'px'; upgradeMenu.style.top = (my - 120) + 'px'; upgradeMenu.style.display = 'flex';
+    upgradeMenu.style.display = 'flex';
+    const menuRect = upgradeMenu.getBoundingClientRect();
+    const containerRect = document.getElementById('game-container').getBoundingClientRect();
+    
+    let newX = mx + 10;
+    let newY = my - 120;
+    if (newX + menuRect.width > containerRect.width) newX = mx - menuRect.width - 20; 
+    if (newY < 0) newY = 10;
+    if (newY + menuRect.height > containerRect.height) newY = containerRect.height - menuRect.height - 10;
+
+    upgradeMenu.style.left = newX + 'px'; 
+    upgradeMenu.style.top = newY + 'px';
 }
 
 function rotateSelectedTower() {
@@ -704,14 +723,17 @@ function startWave() { if(gameState.isWaveActive)return; gameState.isWaveActive=
 function endWave() { gameState.isWaveActive=false; gameState.enemies=[]; gameState.projectiles=[]; gameState.wave++; document.getElementById('wave').innerText=gameState.wave; showDraft(); }
 function showDraft() { const box=document.getElementById('cards-container'); box.innerHTML=''; const pool=(loadedUpgrades.length?loadedUpgrades:[{name:"Backup",desc:"Data Error",apply:()=>playerStats.globalDamage+=1}]); for(let i=0;i<3;i++){ const u=pool[Math.floor(Math.random()*pool.length)]; const d=document.createElement('div'); d.className='card'; d.innerHTML=`<h3 style="color:#00bcd4">${u.name}</h3><p style="color:#ccc">${u.desc}</p>`; d.onclick=()=>{u.apply();document.getElementById('draft-screen').style.display='none';document.getElementById('start-wave-btn').style.display='inline-block';}; box.appendChild(d); } document.getElementById('draft-screen').style.display='flex'; }
 
-// 🟢 Game Loop with Try-Catch Protection
 function loop() {
     try {
         gameState.frame = (gameState.frame||0)+1; ctx.fillStyle='#333'; ctx.fillRect(0,0,canvas.width,canvas.height);
         if(path.length){ ctx.strokeStyle='#555'; ctx.lineWidth=40; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.beginPath(); ctx.moveTo(path[0].x,path[0].y); for(let i=1;i<path.length;i++)ctx.lineTo(path[i].x,path[i].y); ctx.stroke(); }
+        
         gameState.towers.forEach(t=>t.update()); gameState.towers.forEach(t=>t.draw());
         gameState.enemies.forEach(e=>{e.update();e.draw();}); gameState.projectiles.forEach(p=>{p.update();p.draw();});
         drawBuildPreview();
+        
+        document.getElementById('enemy-count').innerText = gameState.enemies.filter(e => e.active).length;
+
         if(gameState.isWaveActive && gameState.spawnFinished && !gameState.enemies.some(e=>e.active) && !gameState.isEndingWave) { gameState.isEndingWave=true; setTimeout(endWave,500); }
     } catch(e) {
         console.error("Game Loop Error:", e);
